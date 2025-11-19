@@ -164,16 +164,25 @@ private:
     std::shared_ptr<lidar_odometry::util::PointCloud> load_ply_point_cloud(const std::string& ply_file_path);
     
     /**
+     * @brief PLY property information
+     */
+    struct PLYPropertyInfo {
+        std::string name;
+        std::string type;
+        size_t byte_size;
+    };
+    
+    /**
      * @brief Parse PLY header to understand file structure
      * @param file_path Path to PLY file
      * @param vertex_count Output parameter for number of vertices
-     * @param has_intensity Output parameter for intensity field availability
+     * @param properties Output parameter for property list
      * @param is_binary Output parameter for binary format
      * @return True if header parsed successfully
      */
     bool parse_ply_header(const std::string& file_path, 
                          size_t& vertex_count, 
-                         bool& has_intensity, 
+                         std::vector<PLYPropertyInfo>& properties,
                          bool& is_binary);
 
     // === System Initialization ===

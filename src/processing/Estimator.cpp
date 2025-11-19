@@ -26,7 +26,6 @@ Estimator::Estimator(const util::SystemConfig& config)
     , m_T_wl_current()
     , m_velocity()
     , m_next_keyframe_id(0)
-    , m_feature_map(new PointCloud())
     , m_debug_pre_icp_cloud(new PointCloud())
     , m_debug_post_icp_cloud(new PointCloud())
     , m_last_successful_loop_keyframe_id(-1)  // Initialize to -1 (no successful loop closure yet)
@@ -491,15 +490,16 @@ const util::SystemConfig& Estimator::get_config() const {
 }
 
 PointCloudConstPtr Estimator::get_local_map() const {
-    return m_feature_map;
+
+    if(m_last_keyframe) {
+        return m_last_keyframe->get_local_map();
+    }  
+    else
+    {
+        return nullptr;
+    }
 }
 
-PointCloudConstPtr Estimator::get_last_keyframe_map() const {
-    if (m_last_keyframe) {
-        return m_last_keyframe->get_local_map();
-    }
-    return nullptr;
-}
 
 void Estimator::get_debug_clouds(PointCloudConstPtr& pre_icp_cloud, PointCloudConstPtr& post_icp_cloud) const {
     pre_icp_cloud = m_debug_pre_icp_cloud;

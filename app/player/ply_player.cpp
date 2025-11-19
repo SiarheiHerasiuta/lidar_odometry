@@ -22,6 +22,7 @@
 #include <filesystem>
 #include <set>
 #include <map>
+#include <cstring>
 #include <sys/resource.h>
 
 #include <spdlog/spdlog.h>
@@ -273,11 +274,24 @@ std::shared_ptr<lidar_odometry::util::PointCloud> PLYPlayer::load_ply_point_clou
     
     // Parse PLY header
     size_t vertex_count;
-    bool has_intensity;
+    std::vector<PLYPropertyInfo> properties;
     bool is_binary;
     
-    if (!parse_ply_header(ply_file_path, vertex_count, has_intensity, is_binary)) {
+    if (!parse_ply_header(ply_file_path, vertex_count, properties, is_binary)) {
         spdlog::error("[PLYPlayer] Failed to parse PLY header: {}", ply_file_path);
+        return cloud;
+    }
+    
+    // Find x, y, z property indices
+    int x_idx = -1, y_idx = -1, z_idx = -1;
+    for (size_t i = 0; i < properties.size(); ++i) {
+        if (properties[i].name == "x") x_idx = i;
+        else if (properties[i].name == "y") y_idx = i;
+        else if (properties[i].name == "z") z_idx = i;
+    }
+    
+    if (x_idx == -1 || y_idx == -1 || z_idx == -1) {
+        spdlog::error("[PLYPlayer] PLY file missing x, y, or z coordinates: {}", ply_file_path);
         return cloud;
     }
     
@@ -296,22 +310,34 @@ std::shared_ptr<lidar_odometry::util::PointCloud> PLYPlayer::load_ply_point_clou
     cloud->reserve(vertex_count);
     
     if (is_binary) {
+        // Calculate total bytes per vertex
+        size_t bytes_per_vertex = 0;
+        for (const auto& prop : properties) {
+            bytes_per_vertex += prop.byte_size;
+        }
+        
         // Read binary data
+        std::vector<char> vertex_buffer(bytes_per_vertex);
         for (size_t i = 0; i < vertex_count; ++i) {
+            file.read(vertex_buffer.data(), bytes_per_vertex);
+            
+            if (!file.good()) break;
+            
+            // Extract x, y, z values
             float x, y, z;
-            file.read(reinterpret_cast<char*>(&x), sizeof(float));
-            file.read(reinterpret_cast<char*>(&y), sizeof(float));
-            file.read(reinterpret_cast<char*>(&z), sizeof(float));
-            
-            if (has_intensity) {
-                float intensity;
-                file.read(reinterpret_cast<char*>(&intensity), sizeof(float));
-                // Ignore intensity for now
+            size_t offset = 0;
+            for (size_t prop_idx = 0; prop_idx < properties.size(); ++prop_idx) {
+                if (prop_idx == x_idx) {
+                    std::memcpy(&x, vertex_buffer.data() + offset, sizeof(float));
+                } else if (prop_idx == y_idx) {
+                    std::memcpy(&y, vertex_buffer.data() + offset, sizeof(float));
+                } else if (prop_idx == z_idx) {
+                    std::memcpy(&z, vertex_buffer.data() + offset, sizeof(float));
+                }
+                offset += properties[prop_idx].byte_size;
             }
             
-            if (file.good()) {
-                cloud->push_back(x, y, z);
-            }
+            cloud->push_back(x, y, z);
         }
     } else {
         // Read ASCII data
@@ -319,16 +345,20 @@ std::shared_ptr<lidar_odometry::util::PointCloud> PLYPlayer::load_ply_point_clou
             if (!std::getline(file, line)) break;
             
             std::istringstream iss(line);
-            float x, y, z;
+            std::vector<float> values;
+            float value;
             
-            if (iss >> x >> y >> z) {
+            // Read all property values
+            while (iss >> value) {
+                values.push_back(value);
+            }
+            
+            // Extract x, y, z
+            if (values.size() >= properties.size()) {
+                float x = values[x_idx];
+                float y = values[y_idx];
+                float z = values[z_idx];
                 cloud->push_back(x, y, z);
-                
-                // Skip intensity if present
-                if (has_intensity) {
-                    float intensity;
-                    iss >> intensity;
-                }
             }
         }
     }
@@ -341,7 +371,7 @@ std::shared_ptr<lidar_odometry::util::PointCloud> PLYPlayer::load_ply_point_clou
 
 bool PLYPlayer::parse_ply_header(const std::string& file_path, 
                                 size_t& vertex_count, 
-                                bool& has_intensity, 
+                                std::vector<PLYPropertyInfo>& properties,
                                 bool& is_binary) {
     std::ifstream file(file_path);
     if (!file.is_open()) {
@@ -349,11 +379,21 @@ bool PLYPlayer::parse_ply_header(const std::string& file_path,
     }
     
     vertex_count = 0;
-    has_intensity = false;
+    properties.clear();
     is_binary = false;
     
     std::string line;
     bool in_header = false;
+    int x_index = -1, y_index = -1, z_index = -1;
+    
+    // Helper function to get byte size of property type
+    auto get_type_size = [](const std::string& type) -> size_t {
+        if (type == "char" || type == "uchar" || type == "int8" || type == "uint8") return 1;
+        if (type == "short" || type == "ushort" || type == "int16" || type == "uint16") return 2;
+        if (type == "int" || type == "uint" || type == "float" || type == "int32" || type == "uint32" || type == "float32") return 4;
+        if (type == "double" || type == "float64") return 8;
+        return 4; // default to float
+    };
     
     while (std::getline(file, line)) {
         if (line == "ply") {
@@ -374,7 +414,7 @@ bool PLYPlayer::parse_ply_header(const std::string& file_path,
         if (token == "format") {
             std::string format;
             iss >> format;
-            is_binary = (format == "binary_little_endian");
+            is_binary = (format == "binary_little_endian" || format == "binary_big_endian");
         } else if (token == "element") {
             std::string element_type;
             iss >> element_type;
@@ -384,14 +424,39 @@ bool PLYPlayer::parse_ply_header(const std::string& file_path,
         } else if (token == "property") {
             std::string type, name;
             iss >> type >> name;
-            if (name == "intensity" || name == "Intensity" || name == "INTENSITY") {
-                has_intensity = true;
-            }
+            
+            PLYPropertyInfo prop;
+            prop.name = name;
+            prop.type = type;
+            prop.byte_size = get_type_size(type);
+            
+            properties.push_back(prop);
+            
+            // Track XYZ positions
+            int current_idx = properties.size() - 1;
+            if (name == "x") x_index = current_idx;
+            else if (name == "y") y_index = current_idx;
+            else if (name == "z") z_index = current_idx;
         }
     }
     
     file.close();
-    return vertex_count > 0;
+    
+    // Validate that we have x, y, z properties
+    if (x_index == -1 || y_index == -1 || z_index == -1) {
+        spdlog::error("[PLYPlayer] PLY file missing x, y, or z coordinates");
+        return false;
+    }
+    
+    if (vertex_count == 0) {
+        spdlog::error("[PLYPlayer] PLY file has no vertices");
+        return false;
+    }
+    
+    spdlog::debug("[PLYPlayer] PLY header parsed: {} vertices, {} properties, {} format", 
+                  vertex_count, properties.size(), is_binary ? "binary" : "ASCII");
+    
+    return true;
 }
 
 std::shared_ptr<viewer::PangolinViewer> PLYPlayer::initialize_viewer(const PLYPlayerConfig& config) {

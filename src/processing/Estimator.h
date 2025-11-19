@@ -91,12 +91,6 @@ public:
      * @return Const pointer to local map
      */
     PointCloudConstPtr get_local_map() const;
-    
-    /**
-     * @brief Get last keyframe's local map for visualization
-     * @return Const pointer to last keyframe's local map, nullptr if no keyframes
-     */
-    PointCloudConstPtr get_last_keyframe_map() const;
 
     /**
     * @brief Get current pose
@@ -281,8 +275,6 @@ private:
     std::shared_ptr<database::LidarFrame> m_old_frame;  // For memory cleanup
     std::deque<std::shared_ptr<database::LidarFrame>> m_keyframes;
     
-    // Local map
-    PointCloudPtr m_feature_map;
     
     // Debug visualization clouds
     PointCloudPtr m_debug_pre_icp_cloud;

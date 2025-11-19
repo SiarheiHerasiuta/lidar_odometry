@@ -1,7 +1,7 @@
 # Data paths
-data_directory: "/home/eugene/data/MID360"
-output_directory: "/home/eugene/data/MID360/Result"
-seq: "slam"
+data_directory: "/home/eugene/data/G1/office"
+output_directory: "/home/eugene/data/G1/office/Result"
+seq: "lidar"
 
 # Player settings
 player:
@@ -14,8 +14,8 @@ player:
 
 # Point cloud processing
 point_cloud:
-  voxel_size: 0.2                    # Very small voxel size (almost no downsampling)
-  map_voxel_size: 0.2                # Map points downsampling voxel size
+  voxel_size: 0.1                    # Very small voxel size (almost no downsampling)
+  map_voxel_size: 0.1                # Map points downsampling voxel size
   max_range: 30.0
   min_range: 0.1
 
