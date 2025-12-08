@@ -65,18 +65,18 @@ Estimator::Estimator(const util::SystemConfig& config)
     // Initialize fast voxel grid filter (Morton code + Robin Hood hashing)
     m_fast_voxel_grid = std::make_unique<map::FastVoxelGrid>(config.voxel_size);
     
+    // Initialize 2-Level VoxelMap with precomputed surfels
+    m_voxel_map = std::make_unique<map::VoxelMap>(config.map_voxel_size);
+    m_voxel_map->SetHierarchyFactor(3);  // L1 = 3×3×3 L0 voxels
+    m_voxel_map->SetPlanarityThreshold(config.surfel_planarity_threshold);
+    
     // Initialize legacy voxel filter for map downsampling
     m_voxel_filter = std::make_unique<util::VoxelGrid>();
     m_voxel_filter->setLeafSize(config.voxel_size);
     
-    // Initialize feature extractor (kept for compatibility, may be removed later)
-    FeatureExtractorConfig feature_config;
-    feature_config.voxel_size = config.feature_voxel_size;
-    feature_config.max_neighbor_distance = config.max_neighbor_distance;
-    m_feature_extractor = std::make_unique<FeatureExtractor>(feature_config);
-    
     spdlog::info("[Estimator] Using FastVoxelGrid with stride={}, voxel_size={}", 
                  config.point_stride, config.voxel_size);
+    spdlog::info("[Estimator] Using VoxelMap for incremental map with voxel_size={}", config.map_voxel_size);
     
     // Initialize loop closure detector
     LoopClosureConfig loop_config;
@@ -91,18 +91,15 @@ Estimator::Estimator(const util::SystemConfig& config)
     // Start background thread for loop detection and PGO
     m_thread_running = true;
     m_loop_pgo_thread = std::thread(&Estimator::loop_pgo_thread_function, this);
-    spdlog::info("[Estimator] Background loop+PGO thread started");
 }
 
 Estimator::~Estimator() {
     // Stop background thread
-    spdlog::info("[Estimator] Stopping background loop+PGO thread...");
     m_thread_running = false;
     m_query_cv.notify_all();  // Wake up thread if waiting
     
     if (m_loop_pgo_thread.joinable()) {
         m_loop_pgo_thread.join();
-        spdlog::info("[Estimator] Background thread stopped successfully");
     }
 }
 
@@ -155,14 +152,14 @@ bool Estimator::process_frame(std::shared_ptr<database::LidarFrame> current_fram
     // Store post-optimization cloud in world coordinates for visualization
     auto map_update_start = std::chrono::high_resolution_clock::now();
     
-    auto transform_start = std::chrono::high_resolution_clock::now();
     PointCloudPtr post_opt_cloud_world(new PointCloud());
     Eigen::Matrix4f T_wl_final = optimized_pose.matrix();
     util::transform_point_cloud(feature_cloud, post_opt_cloud_world, T_wl_final);
-    auto transform_end = std::chrono::high_resolution_clock::now();
-    double transform_ms = std::chrono::duration<double, std::milli>(transform_end - transform_start).count();
 
     current_frame->set_feature_cloud_global(post_opt_cloud_world); // Cache world coordinate features
+    
+    auto transform_end = std::chrono::high_resolution_clock::now();
+    double transform_ms = std::chrono::duration<double, std::milli>(transform_end - map_update_start).count();
     
     m_T_wl_current = optimized_pose;
     
@@ -198,10 +195,6 @@ bool Estimator::process_frame(std::shared_ptr<database::LidarFrame> current_fram
     
     auto map_update_end = std::chrono::high_resolution_clock::now();
     timing.map_update_ms = std::chrono::duration<double, std::milli>(map_update_end - map_update_start).count();
-    
-    // Print detailed map update timing
-    spdlog::debug("[MapUpdate] Total: {:.2f}ms | Transform: {:.2f}ms | PoseCalc: {:.2f}ms | Keyframe({}): {:.2f}ms",
-                  timing.map_update_ms, transform_ms, pose_calc_ms, keyframe_created ? "YES" : "NO", keyframe_ms);
     
     // Update for next iteration - clean up old frame first
     m_old_frame = m_previous_frame;  // Save old frame
@@ -290,9 +283,9 @@ SE3f Estimator::estimate_motion_dual_frame(std::shared_ptr<database::LidarFrame>
                  initial_guess.translation().x(), initial_guess.translation().y(), initial_guess.translation().z(),
                  initial_guess.so3().log().x(), initial_guess.so3().log().y(), initial_guess.so3().log().z());
     
-    // Perform dual frame optimization (keyframe as source, current as target)
+    // Perform ICP optimization using VoxelMap
     bool success = m_icp_optimizer->optimize(
-        keyframe,                    // source frame (keyframe)
+        m_voxel_map.get(),          // VoxelMap with precomputed surfels
         current_frame,              // target frame (current)
         initial_transform_sophus,   // initial relative transform
         optimized_transform_sophus  // optimized relative transform (output)
@@ -368,7 +361,8 @@ void Estimator::create_keyframe(std::shared_ptr<database::LidarFrame> frame)
 {
     auto kf_total_start = std::chrono::high_resolution_clock::now();
     
-    // Set keyframe ID
+    // Step A: Set keyframe ID and relative pose
+    auto step_a_start = std::chrono::high_resolution_clock::now();
     frame->set_keyframe_id(m_next_keyframe_id++);
     
     // Calculate and store relative pose from previous keyframe
@@ -392,11 +386,29 @@ void Estimator::create_keyframe(std::shared_ptr<database::LidarFrame> frame)
                      relative_pose.translation().norm(),
                      relative_pose.so3().log().norm() * 180.0f / M_PI);
         
-        // Odometry constraint will be added to PGO later, right before optimization
+        // Incremental PGO: add keyframe with odometry constraint
+        if (m_config.pgo_enable_pgo) {
+            m_pose_graph_optimizer->add_keyframe_with_odom(
+                previous_keyframe->get_keyframe_id(),
+                frame->get_keyframe_id(),
+                frame->get_pose(),
+                relative_pose,
+                m_config.pgo_odometry_translation_noise,
+                m_config.pgo_odometry_rotation_noise
+            );
+        }
     } else {
         // First keyframe: set identity relative pose
         frame->set_relative_pose(SE3f());
         spdlog::debug("[Estimator] First keyframe: set identity relative pose");
+        
+        // Incremental PGO: add first keyframe with prior
+        if (m_config.pgo_enable_pgo) {
+            m_pose_graph_optimizer->add_first_keyframe(
+                frame->get_keyframe_id(),
+                frame->get_pose()
+            );
+        }
     }
     
     // Add to keyframes list (thread-safe)
@@ -404,6 +416,8 @@ void Estimator::create_keyframe(std::shared_ptr<database::LidarFrame> frame)
         std::lock_guard<std::mutex> lock(m_keyframes_mutex);
         m_keyframes.push_back(frame);
     }
+    auto step_a_end = std::chrono::high_resolution_clock::now();
+    double step_a_ms = std::chrono::duration<double, std::milli>(step_a_end - step_a_start).count();
 
     // Check if frame has global feature cloud
     auto global_feature_cloud = frame->get_feature_cloud_global();
@@ -422,118 +436,82 @@ void Estimator::create_keyframe(std::shared_ptr<database::LidarFrame> frame)
         }
     }
 
-    // Build local map by accumulating last keyframe's local map + current global features
-    auto accumulate_start = std::chrono::high_resolution_clock::now();
-    PointCloudPtr accumulated_map = std::make_shared<util::PointCloud>();
+    // ========== VoxelMap-based incremental map update ==========
+    auto voxelmap_start = std::chrono::high_resolution_clock::now();
     
-    // Add last keyframe's local map if it exists
-    if (m_last_keyframe && m_last_keyframe->get_local_map()) {
-        *accumulated_map += *m_last_keyframe->get_local_map();
-        spdlog::debug("[Estimator] Added {} points from last keyframe's local map", 
-                      m_last_keyframe->get_local_map()->size());
-    }
-    
-    // Add current keyframe's global features
-    if (global_feature_cloud) {
-        *accumulated_map += *global_feature_cloud;
-        spdlog::debug("[Estimator] Added {} points from current global features", 
-                      global_feature_cloud->size());
-    } else {
-        spdlog::error("[Estimator] Null global feature cloud!");
-        return;
-    }
-    auto accumulate_end = std::chrono::high_resolution_clock::now();
-    double accumulate_ms = std::chrono::duration<double, std::milli>(accumulate_end - accumulate_start).count();
-    
-    // Downsample the accumulated map
-    auto downsample_start = std::chrono::high_resolution_clock::now();
-    util::VoxelGrid map_voxel_filter;
-    float map_voxel_size = static_cast<float>(m_config.map_voxel_size);
-    map_voxel_filter.setLeafSize(map_voxel_size);
-    map_voxel_filter.setInputCloud(accumulated_map);
-    
-    auto downsampled_map = std::make_shared<util::PointCloud>();
-    map_voxel_filter.filter(*downsampled_map);
-    auto downsample_end = std::chrono::high_resolution_clock::now();
-    double downsample_ms = std::chrono::duration<double, std::milli>(downsample_end - downsample_start).count();
-    
-    spdlog::debug("[Estimator] Downsampled accumulated map: {} -> {} points", 
-                  accumulated_map->size(), downsampled_map->size());
-    
-    // Apply radius-based filtering around current pose (LiDAR circular pattern)
-    auto radius_filter_start = std::chrono::high_resolution_clock::now();
+    // Update VoxelMap: add new points and remove distant voxels
     Eigen::Vector3f current_position = frame->get_pose().translation();
-    float filter_radius = static_cast<float>(m_config.max_range * 1.2);
+    Eigen::Vector3d sensor_position = current_position.cast<double>();
+    double max_distance = m_config.max_range * 1.2;
     
-    auto filtered_local_map = std::make_shared<util::PointCloud>();
-    filtered_local_map->reserve(downsampled_map->size());
+    m_voxel_map->UpdateVoxelMap(global_feature_cloud, sensor_position, max_distance, true);
     
-    // Filter points within radius from current position
-    for (const auto& point : *downsampled_map) {
-        Eigen::Vector3f point_pos(point.x, point.y, point.z);
-        float distance = (point_pos - current_position).norm();
-        
-        if (distance <= filter_radius) {
-            filtered_local_map->push_back(point);
+    auto voxelmap_end = std::chrono::high_resolution_clock::now();
+    double voxelmap_ms = std::chrono::duration<double, std::milli>(voxelmap_end - voxelmap_start).count();
+    
+    // Get point cloud for local_map (for visualization and compatibility)
+    auto getcloud_start = std::chrono::high_resolution_clock::now();
+    auto local_map_cloud = m_voxel_map->GetPointCloud();
+    frame->set_local_map(local_map_cloud);
+    auto getcloud_end = std::chrono::high_resolution_clock::now();
+    double getcloud_ms = std::chrono::duration<double, std::milli>(getcloud_end - getcloud_start).count();
+    
+    // Sliding window cleanup: keep last N keyframes with full data
+    int current_kf_id = frame->get_keyframe_id();
+    int window_size = m_config.keyframe_window_size;
+    int oldest_to_keep = current_kf_id - window_size + 1;
+    
+    if (oldest_to_keep > 0) {
+        int kf_to_clear = oldest_to_keep - 1;
+        std::lock_guard<std::mutex> lock(m_keyframes_mutex);
+        for (const auto& kf : m_keyframes) {
+            if (kf->get_keyframe_id() == kf_to_clear) {
+                kf->clear_heavy_data_for_old_keyframe();
+                spdlog::debug("[Estimator] Cleared heavy data for keyframe {} (outside window [{}, {}])", 
+                             kf_to_clear, oldest_to_keep, current_kf_id);
+                break;
+            }
         }
     }
-    auto radius_filter_end = std::chrono::high_resolution_clock::now();
-    double radius_filter_ms = std::chrono::duration<double, std::milli>(radius_filter_end - radius_filter_start).count();
     
-    // Store filtered local map in keyframe for optimization::IterativeClosestPointOptimizer
-    frame->set_local_map(filtered_local_map);
-    
-    // Build KdTree for the local map at keyframe creation
-    auto kdtree_start = std::chrono::high_resolution_clock::now();
-    frame->build_local_map_kdtree();
-    auto kdtree_end = std::chrono::high_resolution_clock::now();
-    double kdtree_ms = std::chrono::duration<double, std::milli>(kdtree_end - kdtree_start).count();
-    
-    // Clean up previous last keyframe's heavy data (keep only feature_cloud for visualization)
-    if (m_last_keyframe && m_last_keyframe != frame) {
-        m_last_keyframe->clear_heavy_data_for_old_keyframe();
-        spdlog::debug("[Estimator] Cleared heavy data for previous keyframe {}", m_last_keyframe->get_keyframe_id());
-    }
-    
-    // Update last keyframe reference for optimization
+    // Update last keyframe reference
     m_last_keyframe = frame;
-
     m_last_keyframe_pose = m_last_keyframe->get_pose();
     
-    spdlog::debug("[Estimator] Keyframe created: input={} -> local_map={} points", 
-                  global_feature_cloud->size(), filtered_local_map->size());
-    
     // Add keyframe to loop detector database and query queue for async processing
+    auto loop_start = std::chrono::high_resolution_clock::now();
     if (m_loop_detector && m_config.loop_enable_loop_detection) {
-        // Always add keyframe to database
         m_loop_detector->add_keyframe(frame);
         
-        // Check cooldown: only add to query queue if enough keyframes have passed
         int current_keyframe_id = frame->get_keyframe_id();
         int keyframes_since_last_loop = current_keyframe_id - m_last_successful_loop_keyframe_id;
         bool allow_detection = (keyframes_since_last_loop >= m_config.loop_min_keyframe_gap);
         
         if (allow_detection) {
-            // Add keyframe ID to query queue for background thread processing
             {
                 std::lock_guard<std::mutex> lock(m_query_mutex);
                 m_loop_query_queue.push_back(current_keyframe_id);
                 spdlog::debug("[Estimator] Added KF {} to loop query queue (queue size: {})", 
                              current_keyframe_id, m_loop_query_queue.size());
             }
-            m_query_cv.notify_one();  // Wake up background thread
+            m_query_cv.notify_one();
         } else {
             spdlog::debug("[Estimator] Loop detection skipped: only {} keyframes since last loop (need {})",
                          keyframes_since_last_loop, m_config.loop_min_keyframe_gap);
         }
     }
+    auto loop_end = std::chrono::high_resolution_clock::now();
+    double loop_ms = std::chrono::duration<double, std::milli>(loop_end - loop_start).count();
     
     auto kf_total_end = std::chrono::high_resolution_clock::now();
     double kf_total_ms = std::chrono::duration<double, std::milli>(kf_total_end - kf_total_start).count();
     
-    // Print detailed keyframe creation timing
-    spdlog::info("[Keyframe {}] Total: {:.2f}ms | Accumulate: {:.2f}ms | Downsample: {:.2f}ms | RadiusFilter: {:.2f}ms | KdTree: {:.2f}ms | MapSize: {} pts",
-                 frame->get_keyframe_id(), kf_total_ms, accumulate_ms, downsample_ms, radius_filter_ms, kdtree_ms, filtered_local_map->size());
+    // Suppress unused variable warnings
+    (void)step_a_ms;
+    (void)voxelmap_ms;
+    (void)getcloud_ms;
+    (void)loop_ms;
+    (void)kf_total_ms;
 }
 
 
@@ -743,218 +721,94 @@ void Estimator::process_loop_closures(std::shared_ptr<database::LidarFrame> curr
         return;
     }
     
-    // Build pose graph from scratch with all keyframes and odometry constraints
-    spdlog::info("[PGO] Using Ceres optimizer");
+    // ========== Incremental ISAM2-based PGO (LIO-SAM pattern) ==========
+    spdlog::info("[PGO-ISAM2] Adding loop closure and optimizing incrementally");
     
     // Store pre-PGO poses for visualization (before optimization)
     std::map<int, SE3f> pre_pgo_poses;
     for (const auto& kf : m_keyframes) {
-        // Use get_stored_pose() to get the actual stored value, not dynamic calculation
         pre_pgo_poses[kf->get_keyframe_id()] = kf->get_stored_pose();
     }
     
-    // Clear previous graph
-    m_pose_graph_optimizer->clear();
-    
-    // Add all keyframes and odometry constraints
-    spdlog::info("[Estimator] Building pose graph with {} keyframes", m_keyframes.size());
-    
-    // Add all keyframes as optimization variables
-    for (size_t i = 0; i < m_keyframes.size(); ++i) {
-        auto& kf = m_keyframes[i];
-        
-        if (i == 0) {
-            // First keyframe: add with prior factor (constant)
-            m_pose_graph_optimizer->add_keyframe_pose(
-                kf->get_keyframe_id(),
-                pre_pgo_poses[kf->get_keyframe_id()],
-                true);
-        } else {
-            // Non-first keyframe: add as variable
-            m_pose_graph_optimizer->add_keyframe_pose(
-                kf->get_keyframe_id(),
-                pre_pgo_poses[kf->get_keyframe_id()],
-                false);
-            
-            // Add odometry constraint from previous keyframe
-            auto& prev_kf = m_keyframes[i-1];
-            SE3f relative_pose = kf->get_relative_pose();
-            
-            double odom_trans_noise = m_config.pgo_odometry_translation_noise;
-            double odom_rot_noise = m_config.pgo_odometry_rotation_noise;
-            double trans_weight = 1.0 / (odom_trans_noise * odom_trans_noise);
-            double rot_weight = 1.0 / (odom_rot_noise * odom_rot_noise);
-            m_pose_graph_optimizer->add_odometry_constraint(
-                prev_kf->get_keyframe_id(),
-                kf->get_keyframe_id(),
-                relative_pose,
-                trans_weight,
-                rot_weight
-            );
-        }
-    }
-    
-    // Store and add loop closure constraint
+    // Store loop constraint for logging
     LoopConstraint loop_constraint;
     loop_constraint.from_keyframe_id = matched_keyframe->get_keyframe_id();
     loop_constraint.to_keyframe_id = current_keyframe->get_keyframe_id();
     loop_constraint.relative_pose = T_matched_to_current;
     loop_constraint.translation_noise = m_config.pgo_loop_translation_noise;
     loop_constraint.rotation_noise = m_config.pgo_loop_rotation_noise;
-    
-    // Accumulate all loop constraints
     m_loop_constraints.push_back(loop_constraint);
-    spdlog::info("[Estimator] Stored loop closure constraint: {} -> {} (total loops: {})",
-                loop_constraint.from_keyframe_id, loop_constraint.to_keyframe_id, 
+    
+    spdlog::info("[PGO-ISAM2] Loop closure: {} -> {} (total loops: {})",
+                matched_keyframe->get_keyframe_id(), 
+                current_keyframe->get_keyframe_id(),
                 m_loop_constraints.size());
     
-    // Add ALL accumulated loop constraints to pose graph
-    spdlog::info("[Estimator] Adding {} stored loop constraints to PGO", m_loop_constraints.size());
-    for (const auto& lc : m_loop_constraints) {
-        double trans_weight = 1.0 / (lc.translation_noise * lc.translation_noise);
-        double rot_weight = 1.0 / (lc.rotation_noise * lc.rotation_noise);
-        spdlog::debug("[Estimator]   Loop {}->{}: trans_weight={}, rot_weight={}", 
-                     lc.from_keyframe_id, lc.to_keyframe_id, trans_weight, rot_weight);
-        m_pose_graph_optimizer->add_loop_closure_constraint(
-            lc.from_keyframe_id,
-            lc.to_keyframe_id,
-            lc.relative_pose,
-            trans_weight,
-            rot_weight
-        );
-    }
+    // Incremental ISAM2 update with loop closure (includes 5 extra updates for convergence)
+    bool opt_success = m_pose_graph_optimizer->add_loop_and_optimize(
+        matched_keyframe->get_keyframe_id(),
+        current_keyframe->get_keyframe_id(),
+        T_matched_to_current,
+        m_config.pgo_loop_translation_noise,
+        m_config.pgo_loop_rotation_noise
+    );
     
-    // Perform pose graph optimization
-    spdlog::info("[Estimator] Running Ceres pose graph optimization with {} loop closures...", m_loop_constraints.size());
-    
-    bool opt_success = m_pose_graph_optimizer->optimize();
+    if (opt_success) {
+        // Get optimized poses
+        auto optimized_poses = m_pose_graph_optimizer->get_all_optimized_poses();
         
-        if (opt_success) {
-            // Print pose corrections without applying them
-            auto optimized_poses = m_pose_graph_optimizer->get_all_optimized_poses();
+        spdlog::info("[PGO-ISAM2] ========== PGO Results ==========");
+        spdlog::info("[PGO-ISAM2] Total keyframes optimized: {}", optimized_poses.size());
+        
+        float max_translation_diff = 0.0f;
+        float max_rotation_diff = 0.0f;
+        float avg_translation_diff = 0.0f;
+        float avg_rotation_diff = 0.0f;
+        int count = 0;
+        
+        for (size_t i = 0; i < m_keyframes.size(); i++) {
+            int kf_id = m_keyframes[i]->get_keyframe_id();
+            auto it = optimized_poses.find(kf_id);
             
-            spdlog::info("[Estimator] ========== PGO Results (NOT APPLIED) ==========");
-            spdlog::info("[Estimator] Total keyframes optimized: {}", optimized_poses.size());
-            spdlog::info("[Estimator]");
-            spdlog::info("[Estimator] Per-Keyframe Pose Corrections:");
-            spdlog::info("[Estimator] KF_ID | Δt (m)  | Δr (deg) | Position Before -> After");
-            spdlog::info("[Estimator] ------|---------|----------|------------------------");
-            
-            float max_translation_diff = 0.0f;
-            float max_rotation_diff = 0.0f;
-            float avg_translation_diff = 0.0f;
-            float avg_rotation_diff = 0.0f;
-            int count = 0;
-            
-            for (size_t i = 0; i < m_keyframes.size(); i++) {
-                int kf_id = m_keyframes[i]->get_keyframe_id();
-                auto it = optimized_poses.find(kf_id);
+            if (it != optimized_poses.end()) {
+                SE3f old_pose = pre_pgo_poses[kf_id];
+                SE3f new_pose = it->second;
                 
-                if (it != optimized_poses.end()) {
-                    SE3f old_pose = m_keyframes[i]->get_pose();
-                    SE3f new_pose = it->second;
-                    
-                    float translation_diff = (new_pose.translation() - old_pose.translation()).norm();
-                    float rotation_diff = (new_pose.so3().log() - old_pose.so3().log()).norm() * 180.0f / M_PI;
-                    
-                    // Print each keyframe's correction (debug level)
-                    Eigen::Vector3f pos_before = old_pose.translation();
-                    Eigen::Vector3f pos_after = new_pose.translation();
-                    spdlog::debug("[Estimator] {:5d} | {:7.4f} | {:8.3f} | ({:6.2f},{:6.2f},{:6.2f}) -> ({:6.2f},{:6.2f},{:6.2f})",
-                                kf_id, 
-                                translation_diff, 
-                                rotation_diff,
-                                pos_before.x(), pos_before.y(), pos_before.z(),
-                                pos_after.x(), pos_after.y(), pos_after.z());
-                    
-                    max_translation_diff = std::max(max_translation_diff, translation_diff);
-                    max_rotation_diff = std::max(max_rotation_diff, rotation_diff);
-                    avg_translation_diff += translation_diff;
-                    avg_rotation_diff += rotation_diff;
-                    count++;
-                    
-                    // Calculate odometry constraint cost
-                    float odom_cost_before = 0.0f;
-                    float odom_cost_after = 0.0f;
-                    
-                    if (i > 0) {
-                        SE3f prev_old = m_keyframes[i-1]->get_pose();
-                        SE3f prev_new = optimized_poses[m_keyframes[i-1]->get_keyframe_id()];
-                        SE3f relative = prev_old.inverse() * old_pose;
-                        
-                        SE3f error_before = relative.inverse() * prev_old.inverse() * old_pose;
-                        SE3f error_after = relative.inverse() * prev_new.inverse() * new_pose;
-                        
-                        Eigen::Matrix<float, 6, 1> log_error_before = error_before.log();
-                        Eigen::Matrix<float, 6, 1> log_error_after = error_after.log();
-                        
-                        float t_weight = 1.0f / (0.1f * 0.1f);
-                        float r_weight = 1.0f / (0.1f * 0.1f);
-                        
-                        odom_cost_before = t_weight * log_error_before.head<3>().squaredNorm() + 
-                                          r_weight * log_error_before.tail<3>().squaredNorm();
-                        odom_cost_after = t_weight * log_error_after.head<3>().squaredNorm() + 
-                                         r_weight * log_error_after.tail<3>().squaredNorm();
-                    }
-                    
-                    // Calculate loop closure constraint cost
-                    float loop_cost_before = 0.0f;
-                    float loop_cost_after = 0.0f;
-                    
-                    if ((matched_keyframe && kf_id == matched_keyframe->get_keyframe_id()) ||
-                        (current_keyframe && kf_id == current_keyframe->get_keyframe_id())) {
-                        
-                        SE3f matched_old = matched_keyframe->get_pose();
-                        SE3f matched_new = optimized_poses[matched_keyframe->get_keyframe_id()];
-                        SE3f current_old = current_keyframe->get_pose();
-                        SE3f current_new = optimized_poses[current_keyframe->get_keyframe_id()];
-                        
-                        SE3f error_before = T_matched_to_current.inverse() * matched_old.inverse() * current_old;
-                        SE3f error_after = T_matched_to_current.inverse() * matched_new.inverse() * current_new;
-                        
-                        Eigen::Matrix<float, 6, 1> log_error_before = error_before.log();
-                        Eigen::Matrix<float, 6, 1> log_error_after = error_after.log();
-                        
-                        float loop_t_weight = 1.0f / (0.01f * 0.01f);
-                        float loop_r_weight = 1.0f / (0.01f * 0.01f);
-                        
-                        loop_cost_before = loop_t_weight * log_error_before.head<3>().squaredNorm() + 
-                                          loop_r_weight * log_error_before.tail<3>().squaredNorm();
-                        loop_cost_after = loop_t_weight * log_error_after.head<3>().squaredNorm() + 
-                                         loop_r_weight * log_error_after.tail<3>().squaredNorm();
-                    }
-                    
-                    float total_cost_before = odom_cost_before + loop_cost_before;
-                    float total_cost_after = odom_cost_after + loop_cost_after;
-                    
-                }
-            }
-            
-            if (count > 0) {
-                avg_translation_diff /= count;
-                avg_rotation_diff /= count;
+                float translation_diff = (new_pose.translation() - old_pose.translation()).norm();
+                float rotation_diff = (new_pose.so3().log() - old_pose.so3().log()).norm() * 180.0f / M_PI;
                 
-                spdlog::info("[Estimator] ========== PGO Statistics =========="); 
-                spdlog::info("[Estimator] Average correction: Δt={:.3f}m, Δr={:.2f}°", avg_translation_diff, avg_rotation_diff);
-                spdlog::info("[Estimator] Maximum correction: Δt={:.3f}m, Δr={:.2f}°", max_translation_diff, max_rotation_diff);
+                max_translation_diff = std::max(max_translation_diff, translation_diff);
+                max_rotation_diff = std::max(max_rotation_diff, rotation_diff);
+                avg_translation_diff += translation_diff;
+                avg_rotation_diff += rotation_diff;
+                count++;
             }
-            
-            spdlog::info("[Estimator] =========================================");
-            
-            // Store optimized poses for visualization
-            m_optimized_poses = optimized_poses;
-            
-            // Apply pose graph optimization results to all keyframes
-            spdlog::info("[Estimator] Applying PGO corrections to all keyframes...");
-            apply_pose_graph_optimization();
-            
-            // Update cooldown
-            m_last_successful_loop_keyframe_id = current_keyframe->get_keyframe_id();
-            spdlog::info("[Estimator] Loop closure cooldown activated: next detection after keyframe {}",
-                        m_last_successful_loop_keyframe_id + m_config.loop_min_keyframe_gap);
-        } else {
-            spdlog::error("[Estimator] Pose graph optimization failed!");
         }
+        
+        if (count > 0) {
+            avg_translation_diff /= count;
+            avg_rotation_diff /= count;
+            
+            spdlog::info("[PGO-ISAM2] Average correction: Δt={:.3f}m, Δr={:.2f}°", avg_translation_diff, avg_rotation_diff);
+            spdlog::info("[PGO-ISAM2] Maximum correction: Δt={:.3f}m, Δr={:.2f}°", max_translation_diff, max_rotation_diff);
+        }
+        
+        spdlog::info("[PGO-ISAM2] =========================================");
+        
+        // Store optimized poses for visualization
+        m_optimized_poses = optimized_poses;
+        
+        // Apply pose graph optimization results to all keyframes
+        spdlog::info("[PGO-ISAM2] Applying corrections to all keyframes...");
+        apply_pose_graph_optimization();
+        
+        // Update cooldown
+        m_last_successful_loop_keyframe_id = current_keyframe->get_keyframe_id();
+        spdlog::info("[PGO-ISAM2] Loop closure cooldown activated: next detection after keyframe {}",
+                    m_last_successful_loop_keyframe_id + m_config.loop_min_keyframe_gap);
+    } else {
+        spdlog::error("[PGO-ISAM2] Pose graph optimization failed!");
+    }
 }
 
 void Estimator::apply_pose_graph_optimization() {
@@ -1003,25 +857,22 @@ void Estimator::apply_pose_graph_optimization() {
     // Relative poses are kept as-is (not recalculated from absolute poses)
     // This preserves the optimization result from PGO
 
-    // transform last keyframe's local map
-    auto last_local_map = last_keyframe->get_local_map();
+    // Apply correction to VoxelMap (transform centroids and re-hash)
+    auto voxelmap_correction_start = std::chrono::high_resolution_clock::now();
+    m_voxel_map->ApplyTransformAndRehash(total_correction.matrix());
+    auto voxelmap_correction_end = std::chrono::high_resolution_clock::now();
+    double voxelmap_correction_ms = std::chrono::duration<double, std::milli>(voxelmap_correction_end - voxelmap_correction_start).count();
+    
+    spdlog::info("[Estimator] VoxelMap correction applied in {:.2f}ms (L0={} L1={} voxels)", 
+                 voxelmap_correction_ms, m_voxel_map->GetVoxelCount(), m_voxel_map->GetL1VoxelCount());
 
-    util::PointCloudPtr transformed_local_map = std::make_shared<util::PointCloud>();
-
-    util::transform_point_cloud(
-        last_local_map,
-        transformed_local_map,
-        total_correction.matrix()
-    );
-
-    // Update last keyframe's local map
-    last_keyframe->set_local_map(transformed_local_map);
-    last_keyframe->build_local_map_kdtree();
+    // Update last keyframe's local map from VoxelMap (for visualization only)
+    auto local_map_cloud = m_voxel_map->GetPointCloud();
+    last_keyframe->set_local_map(local_map_cloud);
+    // Note: KdTree no longer built - ICP uses VoxelMap directly
 }
 
 void Estimator::loop_pgo_thread_function() {
-    spdlog::info("[Background] Loop+PGO thread started");
-    
     while (m_thread_running) {
         int query_kf_id = -1;
         std::shared_ptr<database::LidarFrame> query_keyframe = nullptr;
@@ -1088,8 +939,6 @@ void Estimator::loop_pgo_thread_function() {
             }
         }
     }
-    
-    spdlog::info("[Background] Loop+PGO thread stopped");
 }
 
 bool Estimator::run_pgo_for_loop(
@@ -1167,7 +1016,7 @@ bool Estimator::run_pgo_for_loop(
     float translation_diff = pose_diff.translation().norm();
     float rotation_diff = pose_diff.so3().log().norm() * 180.0f / M_PI;
     
-    spdlog::info("[Background] Loop detected {} <-> {}: Δt={:.2f}m, Δr={:.2f}°, {:.1f}% inliers",
+    spdlog::debug("[Background] Loop detected {} <-> {}: Δt={:.2f}m, Δr={:.2f}°, {:.1f}% inliers",
                 candidate.query_keyframe_id, candidate.match_keyframe_id,
                 translation_diff, rotation_diff, inlier_ratio * 100.0f);
     
@@ -1176,67 +1025,13 @@ bool Estimator::run_pgo_for_loop(
     
     // Check if PGO is enabled
     if (!m_config.pgo_enable_pgo) {
-        spdlog::info("[Background] PGO disabled");
+        spdlog::debug("[Background] PGO disabled");
         return false;
     }
     
-    // Take snapshot of keyframes (poses) for PGO
-    std::vector<int> kf_ids;
-    std::vector<SE3f> kf_poses;
-    std::vector<SE3f> kf_relatives;
+    // ========== Incremental ISAM2-based PGO (LIO-SAM pattern) ==========
     
-    {
-        std::lock_guard<std::mutex> lock(m_keyframes_mutex);
-        kf_ids.reserve(m_keyframes.size());
-        kf_poses.reserve(m_keyframes.size());
-        kf_relatives.reserve(m_keyframes.size());
-        
-        for (const auto& kf : m_keyframes) {
-            kf_ids.push_back(kf->get_keyframe_id());
-            kf_poses.push_back(kf->get_pose());
-            kf_relatives.push_back(kf->get_relative_pose());
-        }
-    }
-    
-    // Clear and rebuild pose graph
-    m_pose_graph_optimizer->clear();
-    
-    // Add all keyframe poses
-    for (size_t i = 0; i < kf_ids.size(); ++i) {
-        bool is_fixed = (i == 0);  // Fix first keyframe
-        m_pose_graph_optimizer->add_keyframe_pose(kf_ids[i], kf_poses[i], is_fixed);
-    }
-    
-    // Add odometry constraints
-    double odometry_translation_weight = 1.0 / (m_config.pgo_odometry_translation_noise * 
-                                                 m_config.pgo_odometry_translation_noise);
-    double odometry_rotation_weight = 1.0 / (m_config.pgo_odometry_rotation_noise * 
-                                             m_config.pgo_odometry_rotation_noise);
-    
-    for (size_t i = 1; i < kf_ids.size(); ++i) {
-        m_pose_graph_optimizer->add_odometry_constraint(
-            kf_ids[i-1], kf_ids[i],
-            kf_relatives[i],
-            odometry_translation_weight,
-            odometry_rotation_weight
-        );
-    }
-    
-    // Add loop closure constraint
-    double loop_translation_weight = 1.0 / (m_config.pgo_loop_translation_noise * 
-                                            m_config.pgo_loop_translation_noise);
-    double loop_rotation_weight = 1.0 / (m_config.pgo_loop_rotation_noise * 
-                                         m_config.pgo_loop_rotation_noise);
-    
-    m_pose_graph_optimizer->add_loop_closure_constraint(
-        matched_keyframe->get_keyframe_id(),
-        current_keyframe->get_keyframe_id(),
-        T_matched_to_current,
-        loop_translation_weight,
-        loop_rotation_weight
-    );
-    
-    // Store loop constraint for future use
+    // Store loop constraint for logging
     LoopConstraint loop_constraint;
     loop_constraint.from_keyframe_id = matched_keyframe->get_keyframe_id();
     loop_constraint.to_keyframe_id = current_keyframe->get_keyframe_id();
@@ -1245,8 +1040,29 @@ bool Estimator::run_pgo_for_loop(
     loop_constraint.rotation_noise = m_config.pgo_loop_rotation_noise;
     m_loop_constraints.push_back(loop_constraint);
     
-    // Optimize pose graph
-    if (!m_pose_graph_optimizer->optimize()) {
+    // Snapshot keyframe poses before optimization
+    std::vector<int> kf_ids;
+    std::vector<SE3f> kf_poses_before;
+    {
+        std::lock_guard<std::mutex> lock(m_keyframes_mutex);
+        kf_ids.reserve(m_keyframes.size());
+        kf_poses_before.reserve(m_keyframes.size());
+        for (const auto& kf : m_keyframes) {
+            kf_ids.push_back(kf->get_keyframe_id());
+            kf_poses_before.push_back(kf->get_pose());
+        }
+    }
+    
+    // Incremental ISAM2 update with loop closure
+    bool opt_success = m_pose_graph_optimizer->add_loop_and_optimize(
+        matched_keyframe->get_keyframe_id(),
+        current_keyframe->get_keyframe_id(),
+        T_matched_to_current,
+        m_config.pgo_loop_translation_noise,
+        m_config.pgo_loop_rotation_noise
+    );
+    
+    if (!opt_success) {
         spdlog::error("[Background] PGO failed!");
         return false;
     }
@@ -1262,7 +1078,7 @@ bool Estimator::run_pgo_for_loop(
     for (size_t i = 0; i < kf_ids.size(); ++i) {
         auto it = optimized_poses.find(kf_ids[i]);
         if (it != optimized_poses.end()) {
-            SE3f old_pose = kf_poses[i];
+            SE3f old_pose = kf_poses_before[i];
             SE3f new_pose = it->second;
             
             float trans_diff = (new_pose.translation() - old_pose.translation()).norm();
@@ -1275,15 +1091,17 @@ bool Estimator::run_pgo_for_loop(
         }
     }
     
-    avg_trans_diff /= kf_ids.size();
-    avg_rot_diff /= kf_ids.size();
+    if (!kf_ids.empty()) {
+        avg_trans_diff /= kf_ids.size();
+        avg_rot_diff /= kf_ids.size();
+    }
     
-    spdlog::info("[Background] PGO completed: {} KFs, avg Δ({:.3f}m, {:.2f}°), max Δ({:.3f}m, {:.2f}°)",
+    spdlog::debug("[Background] PGO completed: {} KFs, avg Δ({:.3f}m, {:.2f}°), max Δ({:.3f}m, {:.2f}°)",
                  kf_ids.size(), avg_trans_diff, avg_rot_diff, max_trans_diff, max_rot_diff);
     
     // Calculate correction transform for last keyframe
     int last_kf_id = kf_ids.back();
-    SE3f last_kf_pose_before = kf_poses.back();
+    SE3f last_kf_pose_before = kf_poses_before.back();
     SE3f last_kf_pose_after = optimized_poses[last_kf_id];
     SE3f last_kf_correction = last_kf_pose_after * last_kf_pose_before.inverse();
     
@@ -1319,7 +1137,7 @@ void Estimator::apply_pending_pgo_result_if_available() {
     // Apply PGO result
     int last_optimized_id = result->last_optimized_kf_id;
     
-    spdlog::info("[Main] Applying PGO result ({} keyframes optimized)", 
+    spdlog::debug("[Main] Applying PGO result ({} keyframes optimized)", 
                  result->optimized_poses.size());
     
     // Step 1: Update poses for keyframes included in PGO
@@ -1332,13 +1150,7 @@ void Estimator::apply_pending_pgo_result_if_available() {
                 // Keyframe was included in PGO - update with optimized pose
                 auto it = result->optimized_poses.find(kf_id);
                 if (it != result->optimized_poses.end()) {
-                    SE3f old_pose = kf->get_pose();
-                    SE3f new_pose = it->second;
-                    
-                    float trans_diff = (new_pose.translation() - old_pose.translation()).norm();
-                    float rot_diff = (new_pose.so3().log() - old_pose.so3().log()).norm() * 180.0f / M_PI;
-                    
-                    kf->set_pose(new_pose);
+                    kf->set_pose(it->second);
                 }
             } else {
                 // Keyframe was added after PGO started - will be updated by propagation
@@ -1350,14 +1162,20 @@ void Estimator::apply_pending_pgo_result_if_available() {
     // Step 2: Propagate poses to keyframes added after PGO
     propagate_poses_after_pgo(last_optimized_id);
     
-    // Step 3: Transform current keyframe's map
-    transform_current_keyframe_map(result->last_kf_correction);
+    // Step 3: Apply correction to VoxelMap (critical for ICP to work correctly)
+    m_voxel_map->ApplyTransformAndRehash(result->last_kf_correction.matrix());
+    
+    // Step 4: Update last keyframe's local map from VoxelMap (for visualization)
+    {
+        std::lock_guard<std::mutex> lock(m_keyframes_mutex);
+        if (!m_keyframes.empty()) {
+            auto local_map_cloud = m_voxel_map->GetPointCloud();
+            m_keyframes.back()->set_local_map(local_map_cloud);
+        }
+    }
     
     // Update cooldown
     m_last_successful_loop_keyframe_id = last_optimized_id;
-    
-    spdlog::info("[Main] PGO applied, cooldown until KF {}",
-                m_last_successful_loop_keyframe_id + m_config.loop_min_keyframe_gap);
 }
 
 void Estimator::propagate_poses_after_pgo(int last_optimized_kf_id) {
@@ -1409,7 +1227,7 @@ void Estimator::transform_current_keyframe_map(const SE3f& correction) {
     util::transform_point_cloud(local_map, transformed_map, correction.matrix());
     
     current_kf->set_local_map(transformed_map);
-    current_kf->build_local_map_kdtree();
+    // Note: KdTree no longer built - ICP uses VoxelMap directly
 }
 
 bool Estimator::save_map_to_ply(const std::string& output_path, float voxel_size) {

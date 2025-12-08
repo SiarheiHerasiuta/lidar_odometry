@@ -11,8 +11,8 @@
 
 #include "PangolinViewer.h"
 #include "../database/LidarFrame.h"
-#include "../processing/FeatureExtractor.h"
 #include "../util/Config.h"
+#include "../map/VoxelMap.h"
 #include <spdlog/spdlog.h>
 #include <iostream>
 #include <cmath>
@@ -33,10 +33,11 @@ PangolinViewer::PangolinViewer()
     , m_show_trajectory("ui.5. Show Trajectory", true, true)
     , m_show_keyframes("ui.6. Show Keyframes", true, true)
     , m_show_keyframe_map("ui.7. Show Keyframe Map (Gray)", true, true)
-    , m_show_coordinate_frame("ui.8. Show Coordinate Frame", true, true)
-    , m_top_view_follow("ui.9. Top View Follow", false, true)
-    , m_step_forward_button("ui.10. Step Forward", false, false)
-    , m_finish_button("ui.11. Finish & Exit", false, false)
+    , m_show_surfels("ui.8. Show Surfels (Disc)", true, true)
+    , m_show_coordinate_frame("ui.9. Show Coordinate Frame", true, true)
+    , m_top_view_follow("ui.10. Top View Follow", false, true)
+    , m_step_forward_button("ui.11. Step Forward", false, false)
+    , m_finish_button("ui.12. Finish & Exit", false, false)
     , m_frame_id("info.Frame ID", 0)
     , m_total_points("info.Total Points", 0)
     , m_feature_count("info.Feature Count", 0)
@@ -48,6 +49,7 @@ PangolinViewer::PangolinViewer()
     , m_initialized(false)
     , m_finish_pressed(false)
     , m_step_forward_pressed(false)
+    , m_voxel_map(nullptr)
 {
     // Apply initial config settings
     try {
@@ -303,6 +305,11 @@ void PangolinViewer::render_loop() {
         // Draw last keyframe map
         if (m_show_keyframe_map.Get()) {
             draw_last_keyframe_map();
+        }
+        
+        // Draw surfels as transparent discs
+        if (m_show_surfels.Get()) {
+            draw_surfels();
         }
 
         // Draw current pose - using local copy
@@ -926,6 +933,11 @@ void PangolinViewer::update_last_keyframe(std::shared_ptr<database::LidarFrame> 
     }
 }
 
+void PangolinViewer::update_voxel_map(map::VoxelMap* voxel_map) {
+    std::lock_guard<std::mutex> lock(m_data_mutex);
+    m_voxel_map = voxel_map;
+}
+
 void PangolinViewer::draw_last_keyframe_map() {
     std::lock_guard<std::mutex> lock(m_data_mutex);
 
@@ -945,6 +957,73 @@ void PangolinViewer::draw_last_keyframe_map() {
         glVertex3f(world_point.x(), world_point.y(), world_point.z());
     }
     glEnd();
+}
+
+void PangolinViewer::draw_surfels() {
+    if (!m_voxel_map) return;
+    
+    // Get all L1 surfels
+    auto surfels = m_voxel_map->GetL1Surfels();
+    if (surfels.empty()) return;
+    
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    
+    // Surfel disc radius = L1 voxel size / 2
+    float l1_voxel_size = m_voxel_map->GetVoxelSize() * m_voxel_map->GetHierarchyFactor();
+    float disc_radius = l1_voxel_size / 2.0f;
+    const int num_segments = 16;  // Circle resolution
+    
+    for (const auto& surfel_data : surfels) {
+        const Eigen::Vector3f& centroid = std::get<0>(surfel_data);
+        const Eigen::Vector3f& normal = std::get<1>(surfel_data);
+        float planarity = std::get<2>(surfel_data);
+        
+        // Color intensity based on planarity: more planar = more intense
+        float intensity = 1.0f - (planarity / 0.1f);
+        intensity = std::max(0.3f, std::min(1.0f, intensity));
+        
+        // Find two perpendicular vectors to the normal
+        Eigen::Vector3f u_axis, v_axis;
+        if (std::abs(normal.x()) < 0.9f) {
+            u_axis = Eigen::Vector3f(1, 0, 0).cross(normal).normalized();
+        } else {
+            u_axis = Eigen::Vector3f(0, 1, 0).cross(normal).normalized();
+        }
+        v_axis = normal.cross(u_axis).normalized();
+        
+        // Draw filled disc (mint color, semi-transparent)
+        glColor4f(0.2f * intensity, 0.9f * intensity, 0.7f * intensity, 0.15f);
+        glBegin(GL_TRIANGLE_FAN);
+        glVertex3f(centroid.x(), centroid.y(), centroid.z());  // Center vertex
+        
+        for (int i = 0; i <= num_segments; ++i) {
+            float angle = 2.0f * M_PI * i / num_segments;
+            float cos_a = std::cos(angle);
+            float sin_a = std::sin(angle);
+            
+            Eigen::Vector3f circle_point = centroid + disc_radius * (cos_a * u_axis + sin_a * v_axis);
+            glVertex3f(circle_point.x(), circle_point.y(), circle_point.z());
+        }
+        glEnd();
+        
+        // Draw circle outline (border)
+        glLineWidth(1.5f);
+        glColor4f(0.0f, 0.8f * intensity, 0.6f * intensity, 0.4f);
+        glBegin(GL_LINE_LOOP);
+        for (int i = 0; i < num_segments; ++i) {
+            float angle = 2.0f * M_PI * i / num_segments;
+            float cos_a = std::cos(angle);
+            float sin_a = std::sin(angle);
+            
+            Eigen::Vector3f circle_point = centroid + disc_radius * (cos_a * u_axis + sin_a * v_axis);
+            glVertex3f(circle_point.x(), circle_point.y(), circle_point.z());
+        }
+        glEnd();
+    }
+    
+    glDisable(GL_BLEND);
+    glLineWidth(1.0f);
 }
 
 } // namespace viewer

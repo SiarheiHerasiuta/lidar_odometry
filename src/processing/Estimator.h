@@ -14,17 +14,14 @@
 #include "../util/Types.h"
 #include "../util/Config.h"
 #include "../database/LidarFrame.h"
-#include "FeatureExtractor.h"
-#include "../optimization/Factors.h"
-#include "../optimization/Parameters.h"
 #include "../optimization/AdaptiveMEstimator.h"
 #include "../optimization/PoseGraphOptimizer.h"
 #include "../optimization/IterativeClosestPointOptimizer.h"
 #include "LoopClosureDetector.h"
 #include "../util/MathUtils.h"
 #include "../map/FastVoxelGrid.h"
+#include "../map/VoxelMap.h"
 
-#include <ceres/ceres.h>
 #include <sophus/se3.hpp>
 
 #include <memory>
@@ -125,6 +122,12 @@ public:
      * @return Keyframe at the given index, nullptr if index out of bounds
      */
     std::shared_ptr<database::LidarFrame> get_keyframe(size_t index) const;
+    
+    /**
+     * @brief Get VoxelMap pointer for visualization
+     * @return Raw pointer to VoxelMap (do not delete)
+     */
+    map::VoxelMap* get_voxel_map() const { return m_voxel_map.get(); }
     
     /**
      * @brief Enable/disable loop closure detection
@@ -284,8 +287,8 @@ private:
     // Processing tools
     std::shared_ptr<optimization::IterativeClosestPointOptimizer> m_icp_optimizer;
     std::unique_ptr<map::FastVoxelGrid> m_fast_voxel_grid;  // Fast voxel filter with Morton code
+    std::unique_ptr<map::VoxelMap> m_voxel_map;              // 2-Level hierarchical voxel map with surfels
     std::unique_ptr<util::VoxelGrid> m_voxel_filter;        // Legacy voxel filter (for map downsampling)
-    std::unique_ptr<FeatureExtractor> m_feature_extractor;
     std::shared_ptr<optimization::AdaptiveMEstimator> m_adaptive_estimator;
     
     // Loop closure detection and pose graph optimization

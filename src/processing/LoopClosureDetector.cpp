@@ -44,40 +44,29 @@ bool LoopClosureDetector::add_keyframe(std::shared_ptr<database::LidarFrame> key
         return false;
     }
     
-    try {
-        auto start_time = std::chrono::high_resolution_clock::now();
-        
-        // Convert to SimplePointCloud format
-        auto simple_cloud = convert_to_simple_cloud(keyframe);
-        
-        if (simple_cloud.empty()) {
-            spdlog::warn("[LoopClosureDetector] Empty point cloud for keyframe {}", keyframe->get_keyframe_id());
-            return false;
-        }
-        
-        // Extract LiDAR Iris feature
-        auto feature = extract_iris_feature(simple_cloud);
-        
-        // Store feature, keyframe ID, and position
-        m_feature_database.push_back(feature);
-        m_keyframe_ids.push_back(keyframe->get_keyframe_id());  // Use keyframe ID, not frame ID
-        m_keyframe_positions.push_back(keyframe->get_pose().translation());
-        
-        auto end_time = std::chrono::high_resolution_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
-        
-        if (m_config.enable_debug_output) {
-            spdlog::debug("[LoopClosureDetector] Added keyframe {} - feature extraction: {}ms, total features: {}",
-                         keyframe->get_keyframe_id(), duration, m_feature_database.size());
-        }
-        
-        return true;
-        
-    } catch (const std::exception& e) {
-        spdlog::error("[LoopClosureDetector] Exception adding keyframe {}: {}", 
-                     keyframe->get_keyframe_id(), e.what());
+    // Convert point cloud immediately (before it gets cleared) and store data
+    auto simple_cloud = convert_to_simple_cloud(keyframe);
+    if (simple_cloud.empty()) {
+        spdlog::warn("[LoopClosureDetector] Empty point cloud for keyframe {}", keyframe->get_keyframe_id());
         return false;
     }
+    
+    PendingKeyframeData data;
+    data.cloud = std::move(simple_cloud);
+    data.keyframe_id = keyframe->get_keyframe_id();
+    data.position = keyframe->get_pose().translation();
+    
+    {
+        std::lock_guard<std::mutex> lock(m_pending_mutex);
+        m_pending_keyframes.push_back(std::move(data));
+    }
+    
+    if (m_config.enable_debug_output) {
+        spdlog::debug("[LoopClosureDetector] Queued keyframe {} for lazy feature extraction (pending: {})",
+                     keyframe->get_keyframe_id(), m_pending_keyframes.size());
+    }
+    
+    return true;
 }
 
 std::vector<LoopCandidate> LoopClosureDetector::detect_loop_closures(
@@ -98,6 +87,23 @@ std::vector<LoopCandidate> LoopClosureDetector::detect_loop_closures(
     
     try {
         auto start_time = std::chrono::high_resolution_clock::now();
+        
+        // Process pending keyframes first (lazy feature extraction)
+        std::vector<PendingKeyframeData> pending_copy;
+        {
+            std::lock_guard<std::mutex> lock(m_pending_mutex);
+            pending_copy = std::move(m_pending_keyframes);
+            m_pending_keyframes.clear();
+        }
+        
+        for (const auto& pending_data : pending_copy) {
+            if (!pending_data.cloud.empty()) {
+                auto feature = extract_iris_feature(pending_data.cloud);
+                m_feature_database.push_back(feature);
+                m_keyframe_ids.push_back(pending_data.keyframe_id);
+                m_keyframe_positions.push_back(pending_data.position);
+            }
+        }
         
         // Convert current keyframe to SimplePointCloud format
         auto simple_cloud = convert_to_simple_cloud(current_keyframe);
@@ -171,11 +177,11 @@ std::vector<LoopCandidate> LoopClosureDetector::detect_loop_closures(
         m_total_candidates += candidates.size();
         
         if (!candidates.empty()) {
-            spdlog::info("[LoopClosureDetector] Found {} loop candidates for keyframe {} (search time: {}ms)",
+            spdlog::debug("[LoopClosureDetector] Found {} loop candidates for keyframe {} (search time: {}ms)",
                         candidates.size(), current_id, duration);
             
             for (const auto& candidate : candidates) {
-                spdlog::info("  -> Candidate: {} <-> {} (distance: {:.4f}, bias: {})",
+                spdlog::debug("  -> Candidate: {} <-> {} (distance: {:.4f}, bias: {})",
                            candidate.query_keyframe_id, candidate.match_keyframe_id,
                            candidate.similarity_score, candidate.bias);
             }
@@ -194,7 +200,7 @@ std::vector<LoopCandidate> LoopClosureDetector::detect_loop_closures(
 
 void LoopClosureDetector::update_config(const LoopClosureConfig& config) {
     m_config = config;
-    spdlog::info("[LoopClosureDetector] Configuration updated: threshold={:.3f}, min_gap={}",
+    spdlog::debug("[LoopClosureDetector] Configuration updated: threshold={:.3f}, min_gap={}",
                  m_config.similarity_threshold, m_config.min_keyframe_gap);
 }
 
@@ -211,27 +217,18 @@ SimplePointCloud LoopClosureDetector::convert_to_simple_cloud(
     
     SimplePointCloud simple_cloud;
     
-    // Use local map instead of raw cloud for more refined and consistent features
-    auto local_map = lidar_frame->get_local_map();
-    if (!local_map || local_map->empty()) {
-        spdlog::warn("[LoopClosureDetector] No local map available for keyframe {}, falling back to feature cloud", 
+    // Use feature cloud in LOCAL (sensor) coordinates for LiDAR Iris
+    // LiDAR Iris requires sensor-centric point cloud for consistent BEV representation
+    auto feature_cloud = lidar_frame->get_feature_cloud();
+    if (!feature_cloud || feature_cloud->empty()) {
+        spdlog::warn("[LoopClosureDetector] No feature cloud available for keyframe {}", 
                     lidar_frame->get_keyframe_id());
-        
-        // Fallback to feature cloud if local map is not available
-        auto feature_cloud = lidar_frame->get_feature_cloud_global();
-        if (!feature_cloud || feature_cloud->empty()) {
-            return simple_cloud;
-        }
-        
-        simple_cloud.reserve(feature_cloud->size());
-        for (const auto& point : *feature_cloud) {
-            simple_cloud.emplace_back(point.x, point.y, point.z);
-        }
-    } else {
-        simple_cloud.reserve(local_map->size());
-        for (const auto& point : *local_map) {
-            simple_cloud.emplace_back(point.x, point.y, point.z);
-        }
+        return simple_cloud;
+    }
+    
+    simple_cloud.reserve(feature_cloud->size());
+    for (const auto& point : *feature_cloud) {
+        simple_cloud.emplace_back(point.x, point.y, point.z);
     }
     
     return simple_cloud;

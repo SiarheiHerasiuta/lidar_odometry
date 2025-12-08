@@ -260,9 +260,9 @@ double AdaptiveMEstimator::calculate_pko_scale_factor(const std::vector<double>&
         double alpha = m_alpha_candidates[i];
 
 
-        // To assure graduated non-convexity
-        if(alpha >= m_alpha_star_ref)
-            continue;
+        // // To assure graduated non-convexity
+        // if(alpha >= m_alpha_star_ref)
+        //     continue;
         
         double js_divergence = calculate_js_divergence(residuals, alpha);
 

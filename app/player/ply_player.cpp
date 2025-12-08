@@ -567,6 +567,9 @@ void PLYPlayer::update_viewer(viewer::PangolinViewer& viewer,
             viewer.update_last_keyframe(last_keyframe);
         }
         
+        // Update VoxelMap pointer for surfel visualization
+        viewer.update_voxel_map(m_estimator->get_voxel_map());
+        
         // Update ICP debug clouds if available
         PointCloudConstPtr pre_icp_cloud, post_icp_cloud;
         m_estimator->get_debug_clouds(pre_icp_cloud, post_icp_cloud);

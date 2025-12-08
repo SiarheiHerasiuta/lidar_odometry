@@ -1,6 +1,6 @@
 /**
  * @file      IterativeClosestPointOptimizer.h
- * @brief     Two-frame ICP optimizer using Ceres
+ * @brief     Two-frame ICP optimizer using Gauss-Newton
  * @author    Seungwon Choi
  * @date      2025-10-04
  * @copyright Copyright (c) 2025 Seungwon Choi. All rights reserved.
@@ -14,12 +14,10 @@
 
 #include "../util/Types.h"
 #include "../database/LidarFrame.h"
-#include "Factors.h"
-#include "Parameters.h"
+#include "../map/VoxelMap.h"
 #include "AdaptiveMEstimator.h"
-#include "../util/ICPConfig.h"  // ICPConfig 사용
+#include "../util/ICPConfig.h"
 
-#include <ceres/ceres.h>
 #include <sophus/se3.hpp>
 #include <memory>
 #include <vector>
@@ -79,15 +77,15 @@ public:
     ~IterativeClosestPointOptimizer() = default;
     
     /**
-     * @brief Optimize relative pose between two frames
+     * @brief Optimize relative pose between two frames using VoxelMap
      * 
-     * @param last_keyframe Source keyframe (fixed)
+     * @param voxel_map Pointer to VoxelMap with precomputed surfels
      * @param curr_frame Current frame (optimized)
      * @param initial_transform Initial relative transform guess (curr relative to keyframe)
      * @param optimized_transform Output optimized relative transform
      * @return True if optimization succeeded
      */
-    bool optimize(std::shared_ptr<database::LidarFrame> last_keyframe,
+    bool optimize(map::VoxelMap* voxel_map,
                  std::shared_ptr<database::LidarFrame> curr_frame,
                  const Sophus::SE3f& initial_transform,
                  Sophus::SE3f& optimized_transform);
@@ -134,9 +132,9 @@ public:
 
 private:
     /**
-     * @brief Find correspondences between keyframe and current frame
+     * @brief Find correspondences using VoxelMap surfels
      */
-    size_t find_correspondences(std::shared_ptr<database::LidarFrame> last_keyframe,
+    size_t find_correspondences(map::VoxelMap* voxel_map,
                                std::shared_ptr<database::LidarFrame> curr_frame,
                                DualFrameCorrespondences& correspondences);
     
@@ -161,7 +159,6 @@ private:
 
     // Member variables
     ICPConfig m_config;
-    std::unique_ptr<util::VoxelGrid> m_voxel_filter;
     OptimizationStats m_last_stats;
     std::shared_ptr<optimization::AdaptiveMEstimator> m_adaptive_estimator;
 };

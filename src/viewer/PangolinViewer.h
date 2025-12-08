@@ -32,6 +32,9 @@ namespace lidar_odometry {
 namespace database {
 class LidarFrame;
 }
+namespace map {
+class VoxelMap;
+}
 }
 
 namespace lidar_odometry {
@@ -134,6 +137,12 @@ public:
     void update_last_keyframe(std::shared_ptr<database::LidarFrame> last_keyframe);
     
     /**
+     * @brief Update VoxelMap pointer for on-demand visualization
+     * @param voxel_map Pointer to VoxelMap (will extract points on-demand during rendering)
+     */
+    void update_voxel_map(map::VoxelMap* voxel_map);
+    
+    /**
      * @brief Add frame to trajectory (will use get_pose() for dynamic update)
      * @param frame Frame to add to trajectory
      */
@@ -192,6 +201,7 @@ private:
     PointCloudConstPtr m_pre_icp_cloud;                    ///< Pre-ICP lidar features (world) - Blue  
     PointCloudConstPtr m_post_icp_cloud;                   ///< Post-ICP lidar features (world) - Red
     std::shared_ptr<database::LidarFrame> m_last_keyframe; ///< Last keyframe for local map visualization
+    map::VoxelMap* m_voxel_map;                            ///< VoxelMap pointer for on-demand visualization
     
     // ===== Thread Safety =====
     mutable std::mutex m_data_mutex;
@@ -208,6 +218,7 @@ private:
     pangolin::Var<bool> m_show_trajectory;             ///< Show estimated trajectory checkbox
     pangolin::Var<bool> m_show_keyframes;              ///< Show keyframes checkbox
     pangolin::Var<bool> m_show_keyframe_map;           ///< Show last keyframe map checkbox
+    pangolin::Var<bool> m_show_surfels;                ///< Show surfel discs checkbox
     pangolin::Var<bool> m_show_coordinate_frame;       ///< Show coordinate frame checkbox
     pangolin::Var<bool> m_top_view_follow;             ///< Top-down view follow mode checkbox
     pangolin::Var<bool> m_step_forward_button;         ///< Step forward button
@@ -310,6 +321,16 @@ private:
      * @brief Draw last keyframe map points as large points
      */
     void draw_last_keyframe_map();
+    
+    /**
+     * @brief Draw VoxelMap points (extracts points on-demand from VoxelMap)
+     */
+    void draw_voxel_map();
+    
+    /**
+     * @brief Draw L1 surfels as transparent discs
+     */
+    void draw_surfels();
     
     /**
      * @brief Draw current pose

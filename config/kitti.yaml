@@ -2,7 +2,7 @@
 data_directory: "/home/eugene/data/KITTI/Velodyne"
 ground_truth_directory: "/home/eugene/data/KITTI/GroundTruth"
 output_directory: "/home/eugene/data/KITTI/Result"
-seq: "07"
+seq: "00"
 
 # Player settings
 player:
@@ -12,10 +12,6 @@ player:
   step_mode: false  # Step-by-step processing mode
   auto_ground_truth_path: true  # Automatically construct GT path from sequence
 
-
-
-
-
 # Point cloud processing
 point_cloud:
   voxel_size: 0.5                    # Voxel size for downsampling
@@ -23,6 +19,7 @@ point_cloud:
   map_voxel_size: 0.5                # Map points downsampling voxel size
   max_range: 100.0
   min_range: 0.1
+  surfel_planarity_threshold: 0.3    # Planarity threshold for surfel creation (higher = less strict)
 
 # Feature extraction
 feature_extraction:
@@ -61,12 +58,15 @@ estimator:
   parameter_tolerance: 1e-6          # More relaxed tolerance
   function_tolerance: 1e-6           # More relaxed tolerance
 
+# Keyframe management settings
+keyframe:
+  window_size: 10                    # Keep full data for last N keyframes (for loop closure)
 
 # Loop closure detection settings
 loop_detector:
   enable_loop_detection: true
   similarity_threshold: 0.5          # Lower is more similar (0.0 = identical)
-  min_keyframe_gap: 50               # Dual purpose: 1) Min keyframe ID gap for candidate search, 2) Cooldown gap after successful loop closure
+  min_keyframe_gap: 10              # Dual purpose: 1) Min keyframe ID gap for candidate search, 2) Cooldown gap after successful loop closure
   max_search_distance: 5.0          # Maximum distance (meters) to search for loop candidates
   enable_debug_output: true          # Enable detailed debug logging
   

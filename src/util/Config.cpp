@@ -110,6 +110,9 @@ bool ConfigManager::load_from_file(const std::string& config_file) {
         if (config_map.find("point_cloud.map_voxel_size") != config_map.end()) {
             m_config.map_voxel_size = std::stof(config_map["point_cloud.map_voxel_size"]);
         }
+        if (config_map.find("point_cloud.surfel_planarity_threshold") != config_map.end()) {
+            m_config.surfel_planarity_threshold = std::stof(config_map["point_cloud.surfel_planarity_threshold"]);
+        }
         if (config_map.find("point_cloud.max_range") != config_map.end()) {
             m_config.max_range = std::stof(config_map["point_cloud.max_range"]);
         }
@@ -326,6 +329,11 @@ bool ConfigManager::load_from_file(const std::string& config_file) {
         }
         if (config_map.find("loop_detector.enable_debug_output") != config_map.end()) {
             m_config.loop_enable_debug_output = (config_map["loop_detector.enable_debug_output"] == "true");
+        }
+        
+        // Keyframe management settings
+        if (config_map.find("keyframe.window_size") != config_map.end()) {
+            m_config.keyframe_window_size = std::stoi(config_map["keyframe.window_size"]);
         }
         
         // Pose Graph Optimization (PGO) settings

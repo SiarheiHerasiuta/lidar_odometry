@@ -50,6 +50,7 @@ struct SystemConfig {
     
     // ===== Estimator =====
     float map_voxel_size = 0.2f;                    ///< Local map voxel size
+    float surfel_planarity_threshold = 0.1f;        ///< Planarity threshold for surfel creation
     double keyframe_distance_threshold = 1.0;       ///< Distance threshold for keyframe creation
     double keyframe_rotation_threshold = 0.2;       ///< Rotation threshold for keyframe creation
     size_t min_correspondence_points = 10;           ///< Minimum correspondence points
@@ -117,6 +118,9 @@ struct SystemConfig {
     int loop_min_keyframe_gap = 50;                 ///< Minimum keyframe ID difference for loop detection
     float loop_max_search_distance = 10.0f;         ///< Maximum distance (meters) to search for loop candidates
     bool loop_enable_debug_output = false;          ///< Enable detailed debug logging
+    
+    // ===== Keyframe management =====
+    int keyframe_window_size = 10;                  ///< Number of recent keyframes to keep full data (for loop closure)
     
     // Note: Iris parameters will be automatically calculated from max_range
     

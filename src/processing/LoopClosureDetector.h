@@ -18,6 +18,7 @@
 
 #include <memory>
 #include <vector>
+#include <mutex>
 #include <spdlog/spdlog.h>
 
 namespace lidar_odometry {
@@ -128,6 +129,15 @@ private:
     std::vector<LidarIris::FeatureDesc> m_feature_database;       ///< Feature database
     std::vector<size_t> m_keyframe_ids;                           ///< Keyframe IDs corresponding to features
     std::vector<Eigen::Vector3f> m_keyframe_positions;            ///< Keyframe positions for distance filtering
+    
+    // Pending keyframes for lazy feature extraction (store data, not references)
+    struct PendingKeyframeData {
+        SimplePointCloud cloud;
+        size_t keyframe_id;
+        Eigen::Vector3f position;
+    };
+    std::vector<PendingKeyframeData> m_pending_keyframes;  ///< Keyframe data pending feature extraction
+    mutable std::mutex m_pending_mutex;                    ///< Mutex for thread-safe pending keyframe access
     
     // Statistics
     size_t m_total_queries = 0;                                   ///< Total number of queries
