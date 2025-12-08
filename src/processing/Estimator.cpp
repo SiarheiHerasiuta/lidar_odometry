@@ -154,9 +154,13 @@ bool Estimator::process_frame(std::shared_ptr<database::LidarFrame> current_fram
     
     // Store post-optimization cloud in world coordinates for visualization
     auto map_update_start = std::chrono::high_resolution_clock::now();
+    
+    auto transform_start = std::chrono::high_resolution_clock::now();
     PointCloudPtr post_opt_cloud_world(new PointCloud());
     Eigen::Matrix4f T_wl_final = optimized_pose.matrix();
     util::transform_point_cloud(feature_cloud, post_opt_cloud_world, T_wl_final);
+    auto transform_end = std::chrono::high_resolution_clock::now();
+    double transform_ms = std::chrono::duration<double, std::milli>(transform_end - transform_start).count();
 
     current_frame->set_feature_cloud_global(post_opt_cloud_world); // Cache world coordinate features
     
@@ -171,20 +175,33 @@ bool Estimator::process_frame(std::shared_ptr<database::LidarFrame> current_fram
     m_trajectory.push_back(m_T_wl_current);
     
     // Set previous keyframe reference for dynamic pose calculation
+    auto pose_calc_start = std::chrono::high_resolution_clock::now();
     if (m_last_keyframe) {
         current_frame->set_previous_keyframe(m_last_keyframe);
         // Calculate and store relative pose from keyframe to current frame
         SE3f relative_pose = m_last_keyframe->get_stored_pose().inverse() * m_T_wl_current;
         current_frame->set_relative_pose(relative_pose);
     }
+    auto pose_calc_end = std::chrono::high_resolution_clock::now();
+    double pose_calc_ms = std::chrono::duration<double, std::milli>(pose_calc_end - pose_calc_start).count();
     
     // Step 6: Check for keyframe creation
+    auto keyframe_start = std::chrono::high_resolution_clock::now();
+    bool keyframe_created = false;
     if (should_create_keyframe(m_T_wl_current)) {
         // Transform feature cloud to world coordinates for keyframe storage
         create_keyframe(current_frame);
+        keyframe_created = true;
     }
+    auto keyframe_end = std::chrono::high_resolution_clock::now();
+    double keyframe_ms = std::chrono::duration<double, std::milli>(keyframe_end - keyframe_start).count();
+    
     auto map_update_end = std::chrono::high_resolution_clock::now();
     timing.map_update_ms = std::chrono::duration<double, std::milli>(map_update_end - map_update_start).count();
+    
+    // Print detailed map update timing
+    spdlog::debug("[MapUpdate] Total: {:.2f}ms | Transform: {:.2f}ms | PoseCalc: {:.2f}ms | Keyframe({}): {:.2f}ms",
+                  timing.map_update_ms, transform_ms, pose_calc_ms, keyframe_created ? "YES" : "NO", keyframe_ms);
     
     // Update for next iteration - clean up old frame first
     m_old_frame = m_previous_frame;  // Save old frame
@@ -349,6 +366,8 @@ bool Estimator::should_create_keyframe(const SE3f& current_pose) {
 
 void Estimator::create_keyframe(std::shared_ptr<database::LidarFrame> frame)
 {
+    auto kf_total_start = std::chrono::high_resolution_clock::now();
+    
     // Set keyframe ID
     frame->set_keyframe_id(m_next_keyframe_id++);
     
@@ -404,6 +423,7 @@ void Estimator::create_keyframe(std::shared_ptr<database::LidarFrame> frame)
     }
 
     // Build local map by accumulating last keyframe's local map + current global features
+    auto accumulate_start = std::chrono::high_resolution_clock::now();
     PointCloudPtr accumulated_map = std::make_shared<util::PointCloud>();
     
     // Add last keyframe's local map if it exists
@@ -422,8 +442,11 @@ void Estimator::create_keyframe(std::shared_ptr<database::LidarFrame> frame)
         spdlog::error("[Estimator] Null global feature cloud!");
         return;
     }
+    auto accumulate_end = std::chrono::high_resolution_clock::now();
+    double accumulate_ms = std::chrono::duration<double, std::milli>(accumulate_end - accumulate_start).count();
     
     // Downsample the accumulated map
+    auto downsample_start = std::chrono::high_resolution_clock::now();
     util::VoxelGrid map_voxel_filter;
     float map_voxel_size = static_cast<float>(m_config.map_voxel_size);
     map_voxel_filter.setLeafSize(map_voxel_size);
@@ -431,11 +454,14 @@ void Estimator::create_keyframe(std::shared_ptr<database::LidarFrame> frame)
     
     auto downsampled_map = std::make_shared<util::PointCloud>();
     map_voxel_filter.filter(*downsampled_map);
+    auto downsample_end = std::chrono::high_resolution_clock::now();
+    double downsample_ms = std::chrono::duration<double, std::milli>(downsample_end - downsample_start).count();
     
     spdlog::debug("[Estimator] Downsampled accumulated map: {} -> {} points", 
                   accumulated_map->size(), downsampled_map->size());
     
     // Apply radius-based filtering around current pose (LiDAR circular pattern)
+    auto radius_filter_start = std::chrono::high_resolution_clock::now();
     Eigen::Vector3f current_position = frame->get_pose().translation();
     float filter_radius = static_cast<float>(m_config.max_range * 1.2);
     
@@ -451,12 +477,17 @@ void Estimator::create_keyframe(std::shared_ptr<database::LidarFrame> frame)
             filtered_local_map->push_back(point);
         }
     }
+    auto radius_filter_end = std::chrono::high_resolution_clock::now();
+    double radius_filter_ms = std::chrono::duration<double, std::milli>(radius_filter_end - radius_filter_start).count();
     
     // Store filtered local map in keyframe for optimization::IterativeClosestPointOptimizer
     frame->set_local_map(filtered_local_map);
     
     // Build KdTree for the local map at keyframe creation
+    auto kdtree_start = std::chrono::high_resolution_clock::now();
     frame->build_local_map_kdtree();
+    auto kdtree_end = std::chrono::high_resolution_clock::now();
+    double kdtree_ms = std::chrono::duration<double, std::milli>(kdtree_end - kdtree_start).count();
     
     // Clean up previous last keyframe's heavy data (keep only feature_cloud for visualization)
     if (m_last_keyframe && m_last_keyframe != frame) {
@@ -496,6 +527,13 @@ void Estimator::create_keyframe(std::shared_ptr<database::LidarFrame> frame)
                          keyframes_since_last_loop, m_config.loop_min_keyframe_gap);
         }
     }
+    
+    auto kf_total_end = std::chrono::high_resolution_clock::now();
+    double kf_total_ms = std::chrono::duration<double, std::milli>(kf_total_end - kf_total_start).count();
+    
+    // Print detailed keyframe creation timing
+    spdlog::info("[Keyframe {}] Total: {:.2f}ms | Accumulate: {:.2f}ms | Downsample: {:.2f}ms | RadiusFilter: {:.2f}ms | KdTree: {:.2f}ms | MapSize: {} pts",
+                 frame->get_keyframe_id(), kf_total_ms, accumulate_ms, downsample_ms, radius_filter_ms, kdtree_ms, filtered_local_map->size());
 }
 
 

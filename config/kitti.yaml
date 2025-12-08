@@ -13,11 +13,15 @@ player:
   auto_ground_truth_path: true  # Automatically construct GT path from sequence
 
 
+
+
+
 # Point cloud processing
 point_cloud:
-  voxel_size: 0.4                    # Very small voxel size (almost no downsampling)
-  map_voxel_size: 0.4                # Map points downsampling voxel size (increased for better performance)
-  max_range: 40.0
+  voxel_size: 0.5                    # Voxel size for downsampling
+  point_stride: 64                    # Process every N-th point (1=all, 3=skip 2)
+  map_voxel_size: 0.5                # Map points downsampling voxel size
+  max_range: 100.0
   min_range: 0.1
 
 # Feature extraction
@@ -28,52 +32,40 @@ feature_extraction:
   collinearity_threshold: 0.05
   max_neighbor_distance: 0.5
   feature_quality_threshold: 0.1
-  feature_voxel_size: 0.1               # Voxel size for feature extraction
 
 # Odometry settings
 odometry:
-  max_iterations: 10
-  translation_threshold: 0.005        # Translation convergence threshold (meters)
-  rotation_threshold: 0.005           # Rotation convergence threshold (radians)
+  max_iterations: 4
+  translation_threshold: 0.001        # Translation convergence threshold (meters)
+  rotation_threshold: 0.001           # Rotation convergence threshold (radians)
   max_correspondence_distance: 1.0  # KITTI is large scale environment
-
-# Optimization settings  
-optimization:
-  enable_debug: true
-  max_pairs_offset: 5
-
-# Multi-frame optimization settings
-multi_frame:
-  window_size: 3                     # Number of keyframes in sliding window (excluding current frame)
-  min_keyframe_correspondence_ratio: 0.1  # Minimum correspondence ratio per keyframe
-  min_correspondences_per_keyframe: 50     # Minimum correspondences required per keyframe
-  use_adaptive_window: false         # Dynamically adjust window size based on correspondences
   
 # Robust estimation settings
 robust_estimation:
   use_adaptive_m_estimator: true
-  min_scale_factor: 0.0001              # PKO alpha lower bound
+  min_scale_factor: 0.1              # PKO alpha lower bound
   max_scale_factor: 10.0             # PKO alpha upper bound
   
   # PKO (Probabilistic Kernel Optimization) parameters
-  num_alpha_segments: 1000
+  num_alpha_segments: 100
   truncated_threshold: 10.0
   gmm_components: 3
   gmm_sample_size: 100               # 10% of typical data size
-  pko_kernel_type: "cauchy"          # PKO kernel type ("cauchy", "huber")
+  pko_kernel_type: "huber"          # PKO kernel type ("cauchy", "huber")
 
 # Estimator settings
 estimator:
   keyframe_distance_threshold: 1.0  # Larger distance for KITTI
-  keyframe_rotation_threshold: 0.3  
+  keyframe_rotation_threshold: 0.3   # ~17 degrees
   min_correspondence_points: 50      # More points needed for stability
   parameter_tolerance: 1e-6          # More relaxed tolerance
   function_tolerance: 1e-6           # More relaxed tolerance
 
+
 # Loop closure detection settings
 loop_detector:
   enable_loop_detection: true
-  similarity_threshold: 0.3          # Lower is more similar (0.0 = identical)
+  similarity_threshold: 0.5          # Lower is more similar (0.0 = identical)
   min_keyframe_gap: 50               # Dual purpose: 1) Min keyframe ID gap for candidate search, 2) Cooldown gap after successful loop closure
   max_search_distance: 5.0          # Maximum distance (meters) to search for loop candidates
   enable_debug_output: true          # Enable detailed debug logging
@@ -110,8 +102,3 @@ output:
   trajectory_format: "kitti"  # "kitti" or "tum"
   print_final_errors: true    # Print translation and rotation errors at the end
   error_summary_format: "clean"  # "clean" or "detailed"
-  save_map: true              # Save final map as PLY file
-  map_voxel_size: 0.2         # Voxel size for final map downsampling
-
-
-

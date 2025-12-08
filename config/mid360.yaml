@@ -14,9 +14,10 @@ player:
 
 # Point cloud processing
 point_cloud:
-  voxel_size: 0.1                    # Very small voxel size (almost no downsampling)
-  map_voxel_size: 0.1                # Map points downsampling voxel size
-  max_range: 30.0
+  voxel_size: 0.5                    # Voxel size for downsampling
+  point_stride: 64                    # Process every N-th point (1=all, 3=skip 2)
+  map_voxel_size: 0.5                # Map points downsampling voxel size
+  max_range: 100.0
   min_range: 0.1
 
 # Feature extraction
@@ -30,9 +31,9 @@ feature_extraction:
 
 # Odometry settings
 odometry:
-  max_iterations: 10
-  translation_threshold: 0.005        # Translation convergence threshold (meters)
-  rotation_threshold: 0.005           # Rotation convergence threshold (radians)
+  max_iterations: 4
+  translation_threshold: 0.001        # Translation convergence threshold (meters)
+  rotation_threshold: 0.001           # Rotation convergence threshold (radians)
   max_correspondence_distance: 1.0  # KITTI is large scale environment
   
 # Robust estimation settings
@@ -60,7 +61,7 @@ estimator:
 # Loop closure detection settings
 loop_detector:
   enable_loop_detection: true
-  similarity_threshold: 0.3          # Lower is more similar (0.0 = identical)
+  similarity_threshold: 0.5          # Lower is more similar (0.0 = identical)
   min_keyframe_gap: 50               # Dual purpose: 1) Min keyframe ID gap for candidate search, 2) Cooldown gap after successful loop closure
   max_search_distance: 5.0          # Maximum distance (meters) to search for loop candidates
   enable_debug_output: true          # Enable detailed debug logging
@@ -97,6 +98,3 @@ output:
   trajectory_format: "kitti"  # "kitti" or "tum"
   print_final_errors: true    # Print translation and rotation errors at the end
   error_summary_format: "clean"  # "clean" or "detailed"
-
-
-
