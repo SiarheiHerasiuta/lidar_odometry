@@ -104,6 +104,9 @@ bool ConfigManager::load_from_file(const std::string& config_file) {
         if (config_map.find("point_cloud.voxel_size") != config_map.end()) {
             m_config.voxel_size = std::stof(config_map["point_cloud.voxel_size"]);
         }
+        if (config_map.find("point_cloud.point_stride") != config_map.end()) {
+            m_config.point_stride = std::stoi(config_map["point_cloud.point_stride"]);
+        }
         if (config_map.find("point_cloud.map_voxel_size") != config_map.end()) {
             m_config.map_voxel_size = std::stof(config_map["point_cloud.map_voxel_size"]);
         }

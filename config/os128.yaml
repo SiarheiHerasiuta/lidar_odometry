@@ -1,0 +1,103 @@
+# Data paths
+data_directory: "/home/eugene/data/NEWER/park"
+output_directory: "/home/eugene/data/NEWER/park/Result"
+seq: "lidar"
+
+# Player settings
+player:
+  enable_viewer: true
+  enable_statistics: true
+  enable_console_statistics: true
+  step_mode: false  # Step-by-step processing mode
+  auto_ground_truth_path: true  # Automatically construct GT path from sequence
+
+
+# Point cloud processing
+point_cloud:
+  voxel_size: 0.5                    # Voxel size for downsampling
+  point_stride: 64                    # Process every N-th point (1=all, 3=skip 2)
+  map_voxel_size: 0.5                # Map points downsampling voxel size
+  max_range: 30.0
+  min_range: 0.1
+
+# Feature extraction
+feature_extraction:
+  min_plane_points: 5
+  max_neighbors: 5
+  max_plane_distance: 0.05
+  collinearity_threshold: 0.05
+  max_neighbor_distance: 0.5
+  feature_quality_threshold: 0.1
+
+# Odometry settings
+odometry:
+  max_iterations: 10
+  translation_threshold: 0.005        # Translation convergence threshold (meters)
+  rotation_threshold: 0.005           # Rotation convergence threshold (radians)
+  max_correspondence_distance: 1.0  # KITTI is large scale environment
+  
+# Robust estimation settings
+robust_estimation:
+  use_adaptive_m_estimator: true
+  min_scale_factor: 0.1              # PKO alpha lower bound
+  max_scale_factor: 10.0             # PKO alpha upper bound
+  
+  # PKO (Probabilistic Kernel Optimization) parameters
+  num_alpha_segments: 100
+  truncated_threshold: 10.0
+  gmm_components: 3
+  gmm_sample_size: 100               # 10% of typical data size
+  pko_kernel_type: "huber"          # PKO kernel type ("cauchy", "huber")
+
+# Estimator settings
+estimator:
+  keyframe_distance_threshold: 1.0  # Larger distance for KITTI
+  keyframe_rotation_threshold: 0.3   # ~17 degrees
+  min_correspondence_points: 50      # More points needed for stability
+  parameter_tolerance: 1e-6          # More relaxed tolerance
+  function_tolerance: 1e-6           # More relaxed tolerance
+
+
+# Loop closure detection settings
+loop_detector:
+  enable_loop_detection: true
+  similarity_threshold: 0.3          # Lower is more similar (0.0 = identical)
+  min_keyframe_gap: 50               # Dual purpose: 1) Min keyframe ID gap for candidate search, 2) Cooldown gap after successful loop closure
+  max_search_distance: 5.0          # Maximum distance (meters) to search for loop candidates
+  enable_debug_output: true          # Enable detailed debug logging
+  
+# Pose Graph Optimization (PGO) settings
+pose_graph_optimization:
+  enable_pgo: true                   # Enable pose graph optimization
+  odometry_translation_noise: 1.0    # Odometry constraint translation noise (lower = more trust)
+  odometry_rotation_noise: 1.0       # Odometry constraint rotation noise (lower = more trust)
+  loop_translation_noise: 1.0        # Loop closure constraint translation noise (lower = more trust)
+  loop_rotation_noise: 1.0           # Loop closure constraint rotation noise (lower = more trust)
+
+# Viewer settings
+viewer:
+  viewer_width: 3000
+  viewer_height: 2000
+  point_size: 2.0
+  feature_point_size: 5.0
+  trajectory_width: 2.0
+  coordinate_frame_size: 5    # Larger coordinate frame size
+  coordinate_frame_width: 4   # Thicker coordinate frame lines
+  auto_mode: false  # Step mode for debugging
+  show_point_cloud: true   # Enable original point cloud
+  show_features: true      # Enable features display
+  show_trajectory: true
+  show_coordinate_frame: true
+  show_grid: true
+  follow_camera: false
+  top_view_follow: true  # Enable top-down view following
+
+# Result output settings
+output:
+  save_trajectory: true
+  trajectory_format: "kitti"  # "kitti" or "tum"
+  print_final_errors: true    # Print translation and rotation errors at the end
+  error_summary_format: "clean"  # "clean" or "detailed"
+
+
+

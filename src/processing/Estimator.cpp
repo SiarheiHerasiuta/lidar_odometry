@@ -62,15 +62,21 @@ Estimator::Estimator(const util::SystemConfig& config)
     
     m_icp_optimizer = std::make_shared<optimization::IterativeClosestPointOptimizer>(dual_frame_config, m_adaptive_estimator);
     
-    // Initialize voxel filter for downsampling
+    // Initialize fast voxel grid filter (Morton code + Robin Hood hashing)
+    m_fast_voxel_grid = std::make_unique<map::FastVoxelGrid>(config.voxel_size);
+    
+    // Initialize legacy voxel filter for map downsampling
     m_voxel_filter = std::make_unique<util::VoxelGrid>();
     m_voxel_filter->setLeafSize(config.voxel_size);
     
-    // Initialize feature extractor
+    // Initialize feature extractor (kept for compatibility, may be removed later)
     FeatureExtractorConfig feature_config;
     feature_config.voxel_size = config.feature_voxel_size;
     feature_config.max_neighbor_distance = config.max_neighbor_distance;
     m_feature_extractor = std::make_unique<FeatureExtractor>(feature_config);
+    
+    spdlog::info("[Estimator] Using FastVoxelGrid with stride={}, voxel_size={}", 
+                 config.point_stride, config.voxel_size);
     
     // Initialize loop closure detector
     LoopClosureConfig loop_config;
@@ -102,6 +108,7 @@ Estimator::~Estimator() {
 
 bool Estimator::process_frame(std::shared_ptr<database::LidarFrame> current_frame) {
     auto start_time = std::chrono::high_resolution_clock::now();
+    TimingStats timing;
 
     if (!current_frame || !current_frame->get_raw_cloud()) {
         spdlog::warn("[Estimator] Invalid frame or point cloud");
@@ -112,10 +119,13 @@ bool Estimator::process_frame(std::shared_ptr<database::LidarFrame> current_fram
     apply_pending_pgo_result_if_available();
     
     // Step 1: Preprocess frame (downsample + feature extraction)
+    auto preprocess_start = std::chrono::high_resolution_clock::now();
     if (!preprocess_frame(current_frame)) {
         spdlog::error("[Estimator] Frame preprocessing failed");
         return false;
     }
+    auto preprocess_end = std::chrono::high_resolution_clock::now();
+    timing.preprocessing_ms = std::chrono::duration<double, std::milli>(preprocess_end - preprocess_start).count();
     
     if (!m_initialized) {
         initialize_first_frame(current_frame);
@@ -132,17 +142,18 @@ bool Estimator::process_frame(std::shared_ptr<database::LidarFrame> current_fram
     }
     
     // Step 4: optimization::IterativeClosestPointOptimizer between current frame and last keyframe
-    auto opt_start = std::chrono::high_resolution_clock::now();
+    auto icp_start = std::chrono::high_resolution_clock::now();
     // Calculate initial guess from velocity model: transform from keyframe to current velocity estimate
     SE3f T_keyframe_current_guess = m_previous_frame->get_pose() * m_velocity;
     SE3f T_keyframe_current = estimate_motion_dual_frame(current_frame, m_last_keyframe, T_keyframe_current_guess); 
-    auto opt_end = std::chrono::high_resolution_clock::now();
-    auto opt_time = std::chrono::duration_cast<std::chrono::milliseconds>(opt_end - opt_start);
+    auto icp_end = std::chrono::high_resolution_clock::now();
+    timing.icp_ms = std::chrono::duration<double, std::milli>(icp_end - icp_start).count();
     
     // Convert result to world coordinate (keyframe pose is already in world coordinates)
     SE3f optimized_pose = T_keyframe_current;
     
     // Store post-optimization cloud in world coordinates for visualization
+    auto map_update_start = std::chrono::high_resolution_clock::now();
     PointCloudPtr post_opt_cloud_world(new PointCloud());
     Eigen::Matrix4f T_wl_final = optimized_pose.matrix();
     util::transform_point_cloud(feature_cloud, post_opt_cloud_world, T_wl_final);
@@ -172,6 +183,8 @@ bool Estimator::process_frame(std::shared_ptr<database::LidarFrame> current_fram
         // Transform feature cloud to world coordinates for keyframe storage
         create_keyframe(current_frame);
     }
+    auto map_update_end = std::chrono::high_resolution_clock::now();
+    timing.map_update_ms = std::chrono::duration<double, std::milli>(map_update_end - map_update_start).count();
     
     // Update for next iteration - clean up old frame first
     m_old_frame = m_previous_frame;  // Save old frame
@@ -183,10 +196,18 @@ bool Estimator::process_frame(std::shared_ptr<database::LidarFrame> current_fram
     }
     
     auto end_time = std::chrono::high_resolution_clock::now();
-    auto total_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+    timing.total_ms = std::chrono::duration<double, std::milli>(end_time - start_time).count();
     
-    spdlog::debug("[Estimator] Frame processed in {}ms (Optimization: {}ms, Features: {})", 
-                 total_time.count(), opt_time.count(), feature_cloud->size());
+    // Store timing and print statistics every 100 frames
+    m_timing_history.push_back(timing);
+    m_frame_count++;
+    
+    if (m_frame_count % 100 == 0) {
+        print_timing_statistics();
+    }
+    
+    spdlog::debug("[Estimator] Frame {} processed in {:.1f}ms (Preprocess: {:.1f}ms, ICP: {:.1f}ms, MapUpdate: {:.1f}ms)", 
+                 m_frame_count, timing.total_ms, timing.preprocessing_ms, timing.icp_ms, timing.map_update_ms);
     
     return true;
 }
@@ -513,30 +534,25 @@ bool Estimator::preprocess_frame(std::shared_ptr<database::LidarFrame> frame) {
         return false;
     }
     
-    // Step 1: Downsample the raw cloud
+    // Step 1: Fast voxel grid downsampling with stride (Morton code + Robin Hood hashing)
     PointCloudPtr downsampled_cloud = std::make_shared<PointCloud>();
-    m_voxel_filter->setInputCloud(raw_cloud);
-    m_voxel_filter->filter(*downsampled_cloud);
+    m_fast_voxel_grid->filter(*raw_cloud, *downsampled_cloud, m_config.point_stride);
     
     if (downsampled_cloud->empty()) {
         spdlog::error("[Estimator] Downsampled cloud is empty");
         return false;
     }
     
-    // Step 2: Extract features from downsampled cloud
-    PointCloudPtr feature_cloud = std::make_shared<PointCloud>();
-    size_t num_features = m_feature_extractor->extract_features(downsampled_cloud, feature_cloud);
-    
-    if (num_features == 0) {
-        spdlog::warn("[Estimator] No features extracted, using downsampled cloud as features");
-        feature_cloud = downsampled_cloud;
-    }
+    // Step 2: Use downsampled cloud directly as feature cloud (no separate feature extraction)
+    // Feature extraction is removed - ICP will compute normals from correspondences
     
     // Step 3: Set processed clouds in the frame
     frame->set_processed_cloud(downsampled_cloud);
-    frame->set_feature_cloud(feature_cloud);
+    frame->set_feature_cloud(downsampled_cloud);  // Use same cloud as features
     
-    spdlog::debug("[Estimator] Preprocessing: {} -> {} points, {} features", raw_cloud->size(), downsampled_cloud->size(), feature_cloud->size());
+    spdlog::debug("[Estimator] Preprocessing: {} -> {} points (stride={}, voxels={})", 
+                  raw_cloud->size(), downsampled_cloud->size(), 
+                  m_config.point_stride, m_fast_voxel_grid->getVoxelCount());
     
     return true;
 }
@@ -1415,6 +1431,56 @@ bool Estimator::save_map_to_ply(const std::string& output_path, float voxel_size
     
     spdlog::info("[Estimator] Saved final map to {} ({} points)", output_path, final_map->size());
     return true;
+}
+
+void Estimator::print_timing_statistics() const {
+    if (m_timing_history.empty()) {
+        return;
+    }
+    
+    // Calculate statistics for last 100 frames (or all if less)
+    size_t start_idx = m_timing_history.size() > 100 ? m_timing_history.size() - 100 : 0;
+    size_t count = m_timing_history.size() - start_idx;
+    
+    double sum_preprocess = 0.0, sum_icp = 0.0, sum_map = 0.0, sum_total = 0.0;
+    double max_preprocess = 0.0, max_icp = 0.0, max_map = 0.0, max_total = 0.0;
+    double min_preprocess = 1e9, min_icp = 1e9, min_map = 1e9, min_total = 1e9;
+    
+    for (size_t i = start_idx; i < m_timing_history.size(); ++i) {
+        const auto& t = m_timing_history[i];
+        
+        sum_preprocess += t.preprocessing_ms;
+        sum_icp += t.icp_ms;
+        sum_map += t.map_update_ms;
+        sum_total += t.total_ms;
+        
+        max_preprocess = std::max(max_preprocess, t.preprocessing_ms);
+        max_icp = std::max(max_icp, t.icp_ms);
+        max_map = std::max(max_map, t.map_update_ms);
+        max_total = std::max(max_total, t.total_ms);
+        
+        min_preprocess = std::min(min_preprocess, t.preprocessing_ms);
+        min_icp = std::min(min_icp, t.icp_ms);
+        min_map = std::min(min_map, t.map_update_ms);
+        min_total = std::min(min_total, t.total_ms);
+    }
+    
+    double avg_preprocess = sum_preprocess / count;
+    double avg_icp = sum_icp / count;
+    double avg_map = sum_map / count;
+    double avg_total = sum_total / count;
+    
+    spdlog::info("============================================================");
+    spdlog::info("[Timing Stats] Frame {} (last {} frames)", m_frame_count, count);
+    spdlog::info("------------------------------------------------------------");
+    spdlog::info("              |   Avg (ms)  |   Min (ms)  |   Max (ms)  ");
+    spdlog::info("------------------------------------------------------------");
+    spdlog::info(" Preprocess   | {:>10.2f}  | {:>10.2f}  | {:>10.2f}  ", avg_preprocess, min_preprocess, max_preprocess);
+    spdlog::info(" ICP          | {:>10.2f}  | {:>10.2f}  | {:>10.2f}  ", avg_icp, min_icp, max_icp);
+    spdlog::info(" Map Update   | {:>10.2f}  | {:>10.2f}  | {:>10.2f}  ", avg_map, min_map, max_map);
+    spdlog::info("------------------------------------------------------------");
+    spdlog::info(" Total        | {:>10.2f}  | {:>10.2f}  | {:>10.2f}  ", avg_total, min_total, max_total);
+    spdlog::info("============================================================");
 }
 
 } // namespace processing

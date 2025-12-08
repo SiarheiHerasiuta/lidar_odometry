@@ -28,6 +28,7 @@ struct SystemConfig {
     
     // ===== Point cloud processing =====
     float voxel_size = 0.1f;                        ///< Voxel grid size for downsampling
+    int point_stride = 1;                           ///< Stride for point cloud (1 = all points, 3 = every 3rd)
     float max_range = 100.0f;                       ///< Maximum range for point cloud filtering
     float min_range = 0.5f;                         ///< Minimum range for point cloud filtering
     

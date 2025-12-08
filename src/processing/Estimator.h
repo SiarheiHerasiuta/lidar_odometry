@@ -22,6 +22,7 @@
 #include "../optimization/IterativeClosestPointOptimizer.h"
 #include "LoopClosureDetector.h"
 #include "../util/MathUtils.h"
+#include "../map/FastVoxelGrid.h"
 
 #include <ceres/ceres.h>
 #include <sophus/se3.hpp>
@@ -282,7 +283,8 @@ private:
     
     // Processing tools
     std::shared_ptr<optimization::IterativeClosestPointOptimizer> m_icp_optimizer;
-    std::unique_ptr<util::VoxelGrid> m_voxel_filter;
+    std::unique_ptr<map::FastVoxelGrid> m_fast_voxel_grid;  // Fast voxel filter with Morton code
+    std::unique_ptr<util::VoxelGrid> m_voxel_filter;        // Legacy voxel filter (for map downsampling)
     std::unique_ptr<FeatureExtractor> m_feature_extractor;
     std::shared_ptr<optimization::AdaptiveMEstimator> m_adaptive_estimator;
     
@@ -335,6 +337,19 @@ private:
     mutable size_t m_total_optimization_iterations;
     mutable double m_total_optimization_time_ms;
     mutable size_t m_optimization_call_count;
+
+    // ===== Timing Statistics =====
+    struct TimingStats {
+        double preprocessing_ms = 0.0;
+        double icp_ms = 0.0;
+        double map_update_ms = 0.0;
+        double total_ms = 0.0;
+    };
+    
+    std::vector<TimingStats> m_timing_history;
+    size_t m_frame_count = 0;
+    
+    void print_timing_statistics() const;
 
 };
 
