@@ -41,9 +41,6 @@ add_subdirectory(${THIRDPARTY_DIR}/pangolin ${CMAKE_BINARY_DIR}/pangolin EXCLUDE
 # Sophus is header-only, no need to build
 # Just include the headers
 
-# spdlog is header-only, no need to build
-# Just include the headers
-
 # Build GTSAM from thirdparty
 set(GTSAM_DIR ${THIRDPARTY_DIR}/gtsam)
 set(GTSAM_BUILD_EXAMPLES_ALWAYS OFF CACHE BOOL "Build GTSAM examples" FORCE)
@@ -65,7 +62,6 @@ include_directories(
     ${EIGEN3_INCLUDE_DIRS}
     ${THIRDPARTY_DIR}/pangolin/include
     ${CMAKE_BINARY_DIR}/thirdparty/pangolin/include
-    ${THIRDPARTY_DIR}/spdlog/include
     ${THIRDPARTY_DIR}/gtsam
     ${CMAKE_BINARY_DIR}/gtsam
     ${THIRDPARTY_DIR}/nanoflann
@@ -101,7 +97,7 @@ set(COMMON_SOURCES
     src/viewer/PangolinViewer.cpp
     
     # Utility module
-    src/util/Config.cpp
+    src/util/ConfigUtils.cpp
     src/util/MathUtils.cpp
     src/util/PointCloudUtils.cpp
 )

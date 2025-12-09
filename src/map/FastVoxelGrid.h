@@ -11,7 +11,7 @@
 
 #pragma once
 
-#include "../util/Types.h"
+#include "../util/TypeUtils.h"
 #include "../../thirdparty/unordered_dense/unordered_dense.h"
 
 #include <cstdint>

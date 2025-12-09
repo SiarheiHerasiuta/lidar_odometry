@@ -12,14 +12,14 @@
 #pragma once
 
 #include "../database/LidarFrame.h"
-#include "../util/Types.h"
+#include "../util/TypeUtils.h"
 #include "../util/PointCloudUtils.h"
 #include "../../thirdparty/LidarIris/LidarIris.h"
 
 #include <memory>
 #include <vector>
 #include <mutex>
-#include <spdlog/spdlog.h>
+#include "util/LogUtils.h"
 
 namespace lidar_odometry {
 namespace processing {

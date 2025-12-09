@@ -12,11 +12,11 @@
 
 #pragma once
 
-#include "../util/Types.h"
+#include "../util/TypeUtils.h"
 #include "../database/LidarFrame.h"
 #include "../map/VoxelMap.h"
 #include "AdaptiveMEstimator.h"
-#include "../util/ICPConfig.h"
+#include "../util/ICPUtils.h"
 
 #include <memory>
 #include <vector>

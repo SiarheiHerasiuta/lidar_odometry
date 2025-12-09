@@ -23,11 +23,11 @@
 #include <set>
 #include <map>
 
-#include <spdlog/spdlog.h>
+#include "util/LogUtils.h"
 
-#include <util/Config.h>
+#include <util/ConfigUtils.h>
 #include <util/PointCloudUtils.h>  // Added our point cloud utilities
-#include <util/Types.h>
+#include <util/TypeUtils.h>
 #include <processing/Estimator.h>
 #include <database/LidarFrame.h>
 #include <viewer/PangolinViewer.h>
@@ -42,7 +42,7 @@ KittiPlayerResult KittiPlayer::run(const KittiPlayerConfig& config) {
         // 1. Load configuration
         util::ConfigManager::instance().load_from_file(config.config_path);
         const auto& system_config = util::ConfigManager::instance().get_config();
-        spdlog::info("[KittiPlayer] Successfully loaded configuration from: {}", config.config_path);
+        LOG_INFO("[KittiPlayer] Successfully loaded configuration from: {}", config.config_path);
         
         // 2. Load dataset
         auto point_cloud_data = load_point_cloud_list(config.dataset_path, 
@@ -54,7 +54,7 @@ KittiPlayerResult KittiPlayer::run(const KittiPlayerConfig& config) {
             return result;
         }
         
-        spdlog::info("[KittiPlayer] Loaded {} point cloud files", point_cloud_data.size());
+        LOG_INFO("[KittiPlayer] Loaded {} point cloud files", point_cloud_data.size());
         
         // 3. Load ground truth if available (disabled)
         std::vector<GroundTruthPose> gt_poses;
@@ -72,7 +72,7 @@ KittiPlayerResult KittiPlayer::run(const KittiPlayerConfig& config) {
         // Fill ground truth poses in context (disabled)
         // GT processing disabled - trajectory saved for EVO evaluation
         
-        // spdlog::info("[KittiPlayer] Processing frames {} to {} (step mode: {})", 0, point_cloud_data.size(), config.step_mode ? "enabled" : "disabled");
+        // LOG_INFO("[KittiPlayer] Processing frames {} to {} (step mode: {})", 0, point_cloud_data.size(), config.step_mode ? "enabled" : "disabled");
         
         context.current_idx = 0;
         while (context.current_idx < point_cloud_data.size()) {
@@ -109,13 +109,13 @@ KittiPlayerResult KittiPlayer::run(const KittiPlayerConfig& config) {
                                                    point_cloud_data[context.current_idx].filename);
                 
                 if (!point_cloud || point_cloud->empty()) {
-                    spdlog::warn("[KittiPlayer] Skipping frame {} due to empty point cloud", 
+                    LOG_WARN("[KittiPlayer] Skipping frame {} due to empty point cloud", 
                                 context.current_idx);
                     ++context.current_idx;
                     continue;
                 }
                 // std::cout<<"\n";
-                // spdlog::info("[KittiPlayer] Processing frame {} with {} points\n", context.current_idx, point_cloud->size());
+                // LOG_INFO("[KittiPlayer] Processing frame {} with {} points\n", context.current_idx, point_cloud->size());
                 
                 // Process single frame
                 auto frame_start = std::chrono::high_resolution_clock::now();
@@ -170,7 +170,7 @@ KittiPlayerResult KittiPlayer::run(const KittiPlayerConfig& config) {
             
             // GT evaluation disabled - use EVO tool for evaluation instead
 
-            spdlog::info("[KittiPlayer] Saved trajectory to {}", kitti_output_path);
+            LOG_INFO("[KittiPlayer] Saved trajectory to {}", kitti_output_path);
         }
         
         // 7. Calculate final statistics
@@ -182,7 +182,7 @@ KittiPlayerResult KittiPlayer::run(const KittiPlayerConfig& config) {
                 result.frame_processing_times.end(), 0.0) / result.frame_processing_times.size();
         }
         
-        spdlog::info("[KittiPlayer] Successfully processed {} frames", result.processed_frames);
+        LOG_INFO("[KittiPlayer] Successfully processed {} frames", result.processed_frames);
         
         // Get ICP statistics from estimator
         double avg_icp_iterations, avg_icp_time_ms;
@@ -198,13 +198,13 @@ KittiPlayerResult KittiPlayer::run(const KittiPlayerConfig& config) {
         
         // Display final statistics summary
         if (config.enable_console_statistics && result.success) {
-            spdlog::info("════════════════════════════════════════════════════════════════════");
-            spdlog::info("                          TIME STATISTICS                           ");
-            spdlog::info("════════════════════════════════════════════════════════════════════");
-            spdlog::info(" Total Frames Processed: {}", result.processed_frames);
-            spdlog::info(" Average Processing Time: {:.2f}ms", result.average_processing_time_ms);
+            LOG_INFO("════════════════════════════════════════════════════════════════════");
+            LOG_INFO("                          TIME STATISTICS                           ");
+            LOG_INFO("════════════════════════════════════════════════════════════════════");
+            LOG_INFO(" Total Frames Processed: {}", result.processed_frames);
+            LOG_INFO(" Average Processing Time: {:.2f}ms", result.average_processing_time_ms);
             double fps = 1000.0 / result.average_processing_time_ms;
-            spdlog::info(" Average Frame Rate: {:.1f}fps", fps);
+            LOG_INFO(" Average Frame Rate: {:.1f}fps", fps);
             
            
         }
@@ -218,17 +218,17 @@ KittiPlayerResult KittiPlayer::run(const KittiPlayerConfig& config) {
             
             // Save map in sequence directory: Result/07/map.ply
             std::string map_output_path = seq_output_dir + "/map.ply";
-            spdlog::info("[KittiPlayer] Saving final map to {}...", map_output_path);
+            LOG_INFO("[KittiPlayer] Saving final map to {}...", map_output_path);
             if (m_estimator->save_map_to_ply(map_output_path, sys_config.output_map_voxel_size)) {
-                spdlog::info("[KittiPlayer] Map saved successfully!");
+                LOG_INFO("[KittiPlayer] Map saved successfully!");
             } else {
-                spdlog::error("[KittiPlayer] Failed to save map");
+                LOG_ERROR("[KittiPlayer] Failed to save map");
             }
         }
         
         // Wait for viewer finish if enabled
         if (viewer) {
-            spdlog::info("[KittiPlayer] Processing completed! Close viewer to exit.");
+            LOG_INFO("[KittiPlayer] Processing completed! Close viewer to exit.");
             while (!viewer->should_close()) {
                 // Render runs in thread, no need for explicit call
                 std::this_thread::sleep_for(std::chrono::milliseconds(30));
@@ -237,7 +237,7 @@ KittiPlayerResult KittiPlayer::run(const KittiPlayerConfig& config) {
         
     } catch (const std::exception& e) {
         result.error_message = e.what();
-        spdlog::error("[KittiPlayer] Exception occurred: {}", e.what());
+        LOG_ERROR("[KittiPlayer] Exception occurred: {}", e.what());
     }
     
     return result;
@@ -272,20 +272,20 @@ KittiPlayerResult KittiPlayer::run_from_yaml(const std::string& config_path) {
         config.viewer_width = system_config.viewer_width;
         config.viewer_height = system_config.viewer_height;
         
-        spdlog::info("[KittiPlayer] Configuration from YAML:");
-        spdlog::info("  Dataset path: {}", config.dataset_path);
-        spdlog::info("  Sequence: {}", system_config.kitti_sequence);
-        spdlog::info("  Frame range: {} - {} (skip: {})", config.start_frame, 
+        LOG_INFO("[KittiPlayer] Configuration from YAML:");
+        LOG_INFO("  Dataset path: {}", config.dataset_path);
+        LOG_INFO("  Sequence: {}", system_config.kitti_sequence);
+        LOG_INFO("  Frame range: {} - {} (skip: {})", config.start_frame, 
                     config.end_frame == -1 ? "all" : std::to_string(config.end_frame), config.frame_skip);
-        spdlog::info("  Viewer enabled: {}", config.enable_viewer);
-        spdlog::info("  Step mode: {}", config.step_mode);
+        LOG_INFO("  Viewer enabled: {}", config.enable_viewer);
+        LOG_INFO("  Step mode: {}", config.step_mode);
         
         // Run with constructed configuration
         return run(config);
         
     } catch (const std::exception& e) {
         result.error_message = e.what();
-        spdlog::error("[KittiPlayer] Exception in run_from_yaml: {}", e.what());
+        LOG_ERROR("[KittiPlayer] Exception in run_from_yaml: {}", e.what());
     }
     
     return result;
@@ -307,7 +307,7 @@ std::vector<PointCloudData> KittiPlayer::load_point_cloud_list(const std::string
     // Get all bin files
     auto bin_files = get_bin_files(velodyne_path);
     if (bin_files.empty()) {
-        spdlog::error("[KittiPlayer] No .bin files found in: {}", velodyne_path);
+        LOG_ERROR("[KittiPlayer] No .bin files found in: {}", velodyne_path);
         return point_cloud_data;
     }
     
@@ -324,7 +324,7 @@ std::vector<PointCloudData> KittiPlayer::load_point_cloud_list(const std::string
         point_cloud_data.push_back(data);
     }
     
-    spdlog::info("[KittiPlayer] Found {} point cloud files (range: {}-{}, skip: {})", 
+    LOG_INFO("[KittiPlayer] Found {} point cloud files (range: {}-{}, skip: {})", 
                 point_cloud_data.size(), start_frame, actual_end - 1, frame_skip);
     
     return point_cloud_data;
@@ -341,7 +341,7 @@ util::PointCloud::Ptr KittiPlayer::load_point_cloud(const std::string& dataset_p
     auto point_cloud = util::load_kitti_binary(velodyne_path);
     
     if (!point_cloud || point_cloud->empty()) {
-        spdlog::error("[KittiPlayer] Failed to load point cloud: {}", velodyne_path);
+        LOG_ERROR("[KittiPlayer] Failed to load point cloud: {}", velodyne_path);
         return std::make_shared<util::PointCloud>();
     }
     
@@ -355,17 +355,17 @@ std::shared_ptr<viewer::PangolinViewer> KittiPlayer::initialize_viewer(const Kit
     
     auto viewer = std::make_shared<viewer::PangolinViewer>();
     if (viewer->initialize(config.viewer_width, config.viewer_height)) {
-        spdlog::info("[KittiPlayer] Viewer initialized successfully");
+        LOG_INFO("[KittiPlayer] Viewer initialized successfully");
         
         // Wait for viewer to be ready
         while (!viewer->is_ready()) {
             // Render runs in thread, no need for explicit call
             std::this_thread::sleep_for(std::chrono::milliseconds(16));
         }
-        spdlog::info("[KittiPlayer] Viewer is ready!");
+        LOG_INFO("[KittiPlayer] Viewer is ready!");
         return viewer;
     } else {
-        spdlog::warn("[KittiPlayer] Failed to initialize viewer");
+        LOG_WARN("[KittiPlayer] Failed to initialize viewer");
         return nullptr;
     }
 }
@@ -373,7 +373,7 @@ std::shared_ptr<viewer::PangolinViewer> KittiPlayer::initialize_viewer(const Kit
 void KittiPlayer::initialize_estimator(const util::SystemConfig& config) {
     // Create estimator directly with SystemConfig
     m_estimator = std::make_unique<processing::Estimator>(config);
-    spdlog::info("[KittiPlayer] Estimator initialized");
+    LOG_INFO("[KittiPlayer] Estimator initialized");
 }
 
 double KittiPlayer::process_single_frame(std::shared_ptr<lidar_odometry::util::PointCloud> point_cloud,
@@ -399,7 +399,7 @@ double KittiPlayer::process_single_frame(std::shared_ptr<lidar_odometry::util::P
         Eigen::Matrix4f pose_matrix = se3_pose.Matrix();
         context.estimated_poses.push_back(pose_matrix);
     } else {
-        spdlog::warn("[KittiPlayer] Frame processing failed for frame {}", context.current_idx);
+        LOG_WARN("[KittiPlayer] Frame processing failed for frame {}", context.current_idx);
         // Use last pose or identity if first frame
         if (!context.estimated_poses.empty()) {
             context.estimated_poses.push_back(context.estimated_poses.back());
@@ -420,7 +420,7 @@ void KittiPlayer::align_with_ground_truth(FrameContext& context, const Eigen::Ma
         context.gt_to_estimated_transform = gt_pose.inverse()* estimated_first;
         context.transform_initialized = true;
         
-        spdlog::info("[KittiPlayer] Trajectory alignment initialized");
+        LOG_INFO("[KittiPlayer] Trajectory alignment initialized");
     }
 }
 
@@ -435,7 +435,7 @@ void KittiPlayer::update_viewer(viewer::PangolinViewer& viewer,
         // Add frame to trajectory for dynamic pose updates
         viewer.add_trajectory_frame(context.current_lidar_frame);
     } else {
-        spdlog::warn("[KittiPlayer] No processed LidarFrame available in context");
+        LOG_WARN("[KittiPlayer] No processed LidarFrame available in context");
         // Fallback: create new frame with estimated pose
         Eigen::Matrix4f current_pose = context.estimated_poses.back();
         auto lidar_frame = std::make_shared<database::LidarFrame>(context.frame_index, context.timestamp, point_cloud);
@@ -460,7 +460,7 @@ void KittiPlayer::update_viewer(viewer::PangolinViewer& viewer,
                 auto keyframe = m_estimator->get_keyframe(i);
                 if (keyframe) {
                     viewer.add_keyframe(keyframe);
-                    // spdlog::info("[KittiPlayer] Added keyframe {} to viewer", keyframe->get_frame_id());
+                    // LOG_INFO("[KittiPlayer] Added keyframe {} to viewer", keyframe->get_frame_id());
                 }
             }
             m_last_keyframe_count = current_keyframe_count;
@@ -510,7 +510,7 @@ void KittiPlayer::update_viewer(viewer::PangolinViewer& viewer,
 bool KittiPlayer::handle_viewer_controls(viewer::PangolinViewer& viewer, FrameContext& context) {
     // Check for exit conditions
     if (viewer.should_close()) {
-        spdlog::info("[KittiPlayer] User requested exit");
+        LOG_INFO("[KittiPlayer] User requested exit");
         return false;
     }
     
@@ -530,7 +530,7 @@ void KittiPlayer::save_trajectory_kitti_format(const FrameContext& context,
                                               const std::string& output_path) {
     std::ofstream file(output_path);
     if (!file.is_open()) {
-        spdlog::error("[KittiPlayer] Cannot create output file: {}", output_path);
+        LOG_ERROR("[KittiPlayer] Cannot create output file: {}", output_path);
         return;
     }
     
@@ -541,14 +541,14 @@ void KittiPlayer::save_trajectory_kitti_format(const FrameContext& context,
     }
     
     file.close();
-    spdlog::info("[KittiPlayer] Saved trajectory in KITTI format: {}", output_path);
+    LOG_INFO("[KittiPlayer] Saved trajectory in KITTI format: {}", output_path);
 }
 
 void KittiPlayer::save_trajectory_tum_format(const FrameContext& context,
                                             const std::string& output_path) {
     std::ofstream file(output_path);
     if (!file.is_open()) {
-        spdlog::error("[KittiPlayer] Cannot create output file: {}", output_path);
+        LOG_ERROR("[KittiPlayer] Cannot create output file: {}", output_path);
         return;
     }
     
@@ -569,7 +569,7 @@ void KittiPlayer::save_trajectory_tum_format(const FrameContext& context,
     }
     
     file.close();
-    spdlog::info("[KittiPlayer] Saved trajectory in TUM format: {}", output_path);
+    LOG_INFO("[KittiPlayer] Saved trajectory in TUM format: {}", output_path);
 }
 
 KittiPlayerResult::ErrorStats KittiPlayer::analyze_trajectory_errors(const FrameContext& context) {
@@ -743,12 +743,12 @@ KittiPlayerResult::ErrorStats KittiPlayer::analyze_trajectory_errors(const Frame
         }
         
         // Debug information
-        spdlog::info("[KITTI Eval Debug] Scale factor applied: {:.6f}", scale_factor);
-        spdlog::info("[KITTI Eval Debug] Total segments evaluated: {}", translation_errors_percent.size());
+        LOG_INFO("[KITTI Eval Debug] Scale factor applied: {:.6f}", scale_factor);
+        LOG_INFO("[KITTI Eval Debug] Total segments evaluated: {}", translation_errors_percent.size());
         if (!translation_errors_percent.empty()) {
             double min_trans_err = *std::min_element(translation_errors_percent.begin(), translation_errors_percent.end());
             double max_trans_err = *std::max_element(translation_errors_percent.begin(), translation_errors_percent.end());
-            spdlog::info("[KITTI Eval Debug] Translation error range: {:.2f}% - {:.2f}%", min_trans_err, max_trans_err);
+            LOG_INFO("[KITTI Eval Debug] Translation error range: {:.2f}% - {:.2f}%", min_trans_err, max_trans_err);
         }
     }
     
@@ -813,7 +813,7 @@ void KittiPlayer::save_statistics(const KittiPlayerResult& result,
                                  const std::string& output_path) {
     std::ofstream file(output_path);
     if (!file.is_open()) {
-        spdlog::error("[KittiPlayer] Cannot create statistics file: {}", output_path);
+        LOG_ERROR("[KittiPlayer] Cannot create statistics file: {}", output_path);
         return;
     }
     
@@ -885,7 +885,7 @@ void KittiPlayer::save_statistics(const KittiPlayerResult& result,
     file << "════════════════════════════════════════════════════════════════════\n";
     file.close();
     
-    spdlog::info("[KittiPlayer] Saved statistics to: {}", output_path);
+    LOG_INFO("[KittiPlayer] Saved statistics to: {}", output_path);
 }
 
 std::vector<std::string> KittiPlayer::get_bin_files(const std::string& directory_path) {
@@ -902,7 +902,7 @@ std::vector<std::string> KittiPlayer::get_bin_files(const std::string& directory
         std::sort(bin_files.begin(), bin_files.end());
         
     } catch (const std::filesystem::filesystem_error& e) {
-        spdlog::error("[KittiPlayer] Filesystem error: {}", e.what());
+        LOG_ERROR("[KittiPlayer] Filesystem error: {}", e.what());
     }
     
     return bin_files;
@@ -918,7 +918,7 @@ Eigen::Matrix4f KittiPlayer::parse_kitti_pose(const std::string& line) {
     }
     
     if (values.size() != 12) {
-        spdlog::warn("[KittiPlayer] Invalid KITTI pose line, using identity");
+        LOG_WARN("[KittiPlayer] Invalid KITTI pose line, using identity");
         return Eigen::Matrix4f::Identity();
     }
     
@@ -1059,7 +1059,7 @@ KittiPlayer::TrajectoryErrors KittiPlayer::calculate_trajectory_errors(const std
         }
         
     } catch (const std::exception& e) {
-        spdlog::warn("[KittiPlayer] Error calculating trajectory errors: {}", e.what());
+        LOG_WARN("[KittiPlayer] Error calculating trajectory errors: {}", e.what());
     }
     
     return errors;

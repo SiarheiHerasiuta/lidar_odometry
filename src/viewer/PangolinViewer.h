@@ -25,7 +25,7 @@
 #include <mutex>
 #include <thread>
 #include <atomic>
-#include "../util/Types.h"
+#include "../util/TypeUtils.h"
 
 // Forward declarations
 namespace lidar_odometry {

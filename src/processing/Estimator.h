@@ -11,8 +11,8 @@
 
 #pragma once
 
-#include "../util/Types.h"
-#include "../util/Config.h"
+#include "../util/TypeUtils.h"
+#include "../util/ConfigUtils.h"
 #include "../database/LidarFrame.h"
 #include "../optimization/AdaptiveMEstimator.h"
 #include "../optimization/PoseGraphOptimizer.h"

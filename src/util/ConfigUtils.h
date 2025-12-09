@@ -1,5 +1,5 @@
 /**
- * @file      Config.h
+ * @file      ConfigUtils.h
  * @brief     Configuration management for LiDAR odometry system.
  * @author    Your Name
  * @date      2025-01-09

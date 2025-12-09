@@ -26,7 +26,7 @@
 #include <memory>
 #include <chrono>
 #include <Eigen/Dense>
-#include "../../src/util/Types.h"
+#include "../../src/util/TypeUtils.h"
 
 // Forward declarations to avoid heavy includes
 namespace lidar_odometry {

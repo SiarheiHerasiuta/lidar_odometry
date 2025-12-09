@@ -9,7 +9,7 @@
  * This project is released under the MIT License.
  */
 
-#include "Config.h"
+#include "ConfigUtils.h"
 #include <fstream>
 #include <iostream>
 #include <sstream>

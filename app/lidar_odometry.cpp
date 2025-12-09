@@ -10,8 +10,8 @@
  */
 
 #include <iostream>
-#include <spdlog/spdlog.h>
-#include <spdlog/sinks/stdout_color_sinks.h>
+#include "util/LogUtils.h"
+
 
 #include "player/ply_player.h"
 
@@ -41,12 +41,6 @@ void print_usage(const char* program_name) {
 }
 
 int main(int argc, char** argv) {
-    // Initialize logging
-    auto console = spdlog::stdout_color_mt("console");
-    spdlog::set_default_logger(console);
-    spdlog::set_level(spdlog::level::info);
-    spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] %v");
-    
     // Default configuration
     std::string config_path = "./config/mid360.yaml";
     lidar_odometry::app::PLYPlayerConfig player_config;
@@ -86,7 +80,7 @@ int main(int argc, char** argv) {
             if (format == "tum" || format == "kitti") {
                 player_config.trajectory_format = format;
             } else {
-                spdlog::error("Invalid trajectory format: {}. Use 'tum' or 'kitti'", format);
+                LOG_ERROR("Invalid trajectory format: {}. Use 'tum' or 'kitti'", format);
                 return 1;
             }
         } else if (arg == "--output" && i + 1 < argc) {
@@ -96,35 +90,35 @@ int main(int argc, char** argv) {
             config_path = arg;
             player_config.config_path = config_path;
         } else {
-            spdlog::error("Unknown argument: {}", arg);
+            LOG_ERROR("Unknown argument: {}", arg);
             print_usage(argv[0]);
             return 1;
         }
     }
     
     // Print banner
-    spdlog::info("════════════════════════════════════════════════════════════════════");
-    spdlog::info("                    MID360 LiDAR Odometry System                    ");
-    spdlog::info("                         PLY File Player                           ");
-    spdlog::info("════════════════════════════════════════════════════════════════════");
-    spdlog::info("Configuration file: {}", config_path);
-    spdlog::info("Processing mode: {}", player_config.step_mode ? "Step-by-step" : "Continuous");
-    spdlog::info("3D Viewer: {}", player_config.enable_viewer ? "Enabled" : "Disabled");
-    spdlog::info("Statistics: {}", player_config.enable_statistics ? "Enabled" : "Disabled");
+    LOG_INFO("════════════════════════════════════════════════════════════════════");
+    LOG_INFO("                    MID360 LiDAR Odometry System                    ");
+    LOG_INFO("                         PLY File Player                           ");
+    LOG_INFO("════════════════════════════════════════════════════════════════════");
+    LOG_INFO("Configuration file: {}", config_path);
+    LOG_INFO("Processing mode: {}", player_config.step_mode ? "Step-by-step" : "Continuous");
+    LOG_INFO("3D Viewer: {}", player_config.enable_viewer ? "Enabled" : "Disabled");
+    LOG_INFO("Statistics: {}", player_config.enable_statistics ? "Enabled" : "Disabled");
     
     if (player_config.start_frame > 0 || player_config.end_frame >= 0) {
-        spdlog::info("Frame range: {} to {}", 
+        LOG_INFO("Frame range: {} to {}", 
                     player_config.start_frame, 
                     player_config.end_frame >= 0 ? std::to_string(player_config.end_frame) : "end");
     }
     
     if (player_config.frame_skip > 1) {
-        spdlog::info("Frame skip: Every {} frames", player_config.frame_skip);
+        LOG_INFO("Frame skip: Every {} frames", player_config.frame_skip);
     }
     
-    spdlog::info("Trajectory format: {}", player_config.trajectory_format);
-    spdlog::info("Output directory: {}", player_config.output_directory);
-    spdlog::info("");
+    LOG_INFO("Trajectory format: {}", player_config.trajectory_format);
+    LOG_INFO("Output directory: {}", player_config.output_directory);
+    LOG_INFO("");
     
     try {
         // Create and run PLY player
@@ -132,66 +126,66 @@ int main(int argc, char** argv) {
         auto result = player.run_from_yaml(config_path);
         
         if (result.success) {
-            spdlog::info("");
-            spdlog::info("════════════════════════════════════════════════════════════════════");
-            spdlog::info("                        PROCESSING COMPLETED                        ");
-            spdlog::info("════════════════════════════════════════════════════════════════════");
-            spdlog::info(" Successfully processed {} frames", result.processed_frames);
-            spdlog::info(" Average processing time: {:.2f}ms", result.average_processing_time_ms);
+            LOG_INFO("");
+            LOG_INFO("════════════════════════════════════════════════════════════════════");
+            LOG_INFO("                        PROCESSING COMPLETED                        ");
+            LOG_INFO("════════════════════════════════════════════════════════════════════");
+            LOG_INFO(" Successfully processed {} frames", result.processed_frames);
+            LOG_INFO(" Average processing time: {:.2f}ms", result.average_processing_time_ms);
             
             if (result.average_processing_time_ms > 0) {
-                spdlog::info(" Average frame rate: {:.1f}fps", 1000.0 / result.average_processing_time_ms);
+                LOG_INFO(" Average frame rate: {:.1f}fps", 1000.0 / result.average_processing_time_ms);
             }
             
-            spdlog::info("");
-            spdlog::info(" Output files saved to: results directory");
-            spdlog::info(" - trajectory.{} (estimated trajectory)", player_config.trajectory_format);
+            LOG_INFO("");
+            LOG_INFO(" Output files saved to: results directory");
+            LOG_INFO(" - trajectory.{} (estimated trajectory)", player_config.trajectory_format);
             if (player_config.enable_statistics) {
-                spdlog::info(" - statistics.txt (detailed statistics)");
+                LOG_INFO(" - statistics.txt (detailed statistics)");
             }
             
-            spdlog::info("════════════════════════════════════════════════════════════════════");
-            spdlog::info("");
-            spdlog::info("To evaluate trajectory accuracy, use tools like:");
-            spdlog::info("  evo_traj {} trajectory.{} --plot --save_plot trajectory_plot", 
+            LOG_INFO("════════════════════════════════════════════════════════════════════");
+            LOG_INFO("");
+            LOG_INFO("To evaluate trajectory accuracy, use tools like:");
+            LOG_INFO("  evo_traj {} trajectory.{} --plot --save_plot trajectory_plot", 
                         player_config.trajectory_format, player_config.trajectory_format);
             
             if (player_config.trajectory_format == "tum") {
-                spdlog::info("  evo_ape tum ground_truth.txt trajectory.tum --plot --save_plot ape_plot");
+                LOG_INFO("  evo_ape tum ground_truth.txt trajectory.tum --plot --save_plot ape_plot");
             } else {
-                spdlog::info("  evo_ape kitti ground_truth.txt trajectory.kitti --plot --save_plot ape_plot");
+                LOG_INFO("  evo_ape kitti ground_truth.txt trajectory.kitti --plot --save_plot ape_plot");
             }
             
             return 0;
         } else {
-            spdlog::error("");
-            spdlog::error("════════════════════════════════════════════════════════════════════");
-            spdlog::error("                         PROCESSING FAILED                          ");
-            spdlog::error("════════════════════════════════════════════════════════════════════");
-            spdlog::error("Error: {}", result.error_message);
-            spdlog::error("");
-            spdlog::error("Common issues and solutions:");
-            spdlog::error("1. Check if the PLY files exist in the dataset directory");
-            spdlog::error("2. Verify the configuration file path and content");
-            spdlog::error("3. Ensure sufficient disk space for output files");
-            spdlog::error("4. Check file permissions for input and output directories");
+            LOG_ERROR("");
+            LOG_ERROR("════════════════════════════════════════════════════════════════════");
+            LOG_ERROR("                         PROCESSING FAILED                          ");
+            LOG_ERROR("════════════════════════════════════════════════════════════════════");
+            LOG_ERROR("Error: {}", result.error_message);
+            LOG_ERROR("");
+            LOG_ERROR("Common issues and solutions:");
+            LOG_ERROR("1. Check if the PLY files exist in the dataset directory");
+            LOG_ERROR("2. Verify the configuration file path and content");
+            LOG_ERROR("3. Ensure sufficient disk space for output files");
+            LOG_ERROR("4. Check file permissions for input and output directories");
             return 1;
         }
         
     } catch (const std::exception& e) {
-        spdlog::error("");
-        spdlog::error("════════════════════════════════════════════════════════════════════");
-        spdlog::error("                           FATAL ERROR                             ");
-        spdlog::error("════════════════════════════════════════════════════════════════════");
-        spdlog::error("Fatal error: {}", e.what());
-        spdlog::error("");
-        spdlog::error("This is typically caused by:");
-        spdlog::error("1. Missing dependencies or libraries");
-        spdlog::error("2. Corrupted configuration file");
-        spdlog::error("3. Invalid memory access or segmentation fault");
-        spdlog::error("4. System resource limitations");
-        spdlog::error("");
-        spdlog::error("Try running with debug logging: export SPDLOG_LEVEL=debug");
+        LOG_ERROR("");
+        LOG_ERROR("════════════════════════════════════════════════════════════════════");
+        LOG_ERROR("                           FATAL ERROR                             ");
+        LOG_ERROR("════════════════════════════════════════════════════════════════════");
+        LOG_ERROR("Fatal error: {}", e.what());
+        LOG_ERROR("");
+        LOG_ERROR("This is typically caused by:");
+        LOG_ERROR("1. Missing dependencies or libraries");
+        LOG_ERROR("2. Corrupted configuration file");
+        LOG_ERROR("3. Invalid memory access or segmentation fault");
+        LOG_ERROR("4. System resource limitations");
+        LOG_ERROR("");
+        LOG_ERROR("Try running with debug logging: export SPDLOG_LEVEL=debug");
         return 1;
     }
 }

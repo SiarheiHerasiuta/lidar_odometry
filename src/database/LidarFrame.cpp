@@ -11,7 +11,7 @@
 
 #include "LidarFrame.h"
 #include "../util/PointCloudUtils.h"
-#include <spdlog/spdlog.h>
+#include "util/LogUtils.h"
 
 namespace lidar_odometry {
 namespace database {
@@ -37,7 +37,7 @@ LidarFrame::LidarFrame(int frame_id,
     , m_has_ground_truth(false) {
     
     if (!m_raw_cloud) {
-        spdlog::warn("[LidarFrame] Frame {} initialized with null raw cloud", m_frame_id);
+        LOG_WARN("[LidarFrame] Frame {} initialized with null raw cloud", m_frame_id);
         m_raw_cloud = std::make_shared<PointCloud>();
     }
     
@@ -159,7 +159,7 @@ void LidarFrame::set_processed_cloud(const PointCloudPtr& processed_cloud) {
     m_kdtree.reset();
     
     if (!m_processed_cloud) {
-        spdlog::warn("[LidarFrame] Frame {} processed cloud set to null", m_frame_id);
+        LOG_WARN("[LidarFrame] Frame {} processed cloud set to null", m_frame_id);
     }
 }
 
@@ -167,7 +167,7 @@ void LidarFrame::set_feature_cloud(const PointCloudPtr& feature_cloud) {
     m_feature_cloud = feature_cloud;
     
     if (!m_feature_cloud) {
-        spdlog::warn("[LidarFrame] Frame {} feature cloud set to null", m_frame_id);
+        LOG_WARN("[LidarFrame] Frame {} feature cloud set to null", m_frame_id);
     }
 
     // util::transform_point_cloud(m_feature_cloud, m_feature_cloud_global, m_pose.Matrix());
@@ -178,7 +178,7 @@ void LidarFrame::set_feature_cloud_global(const PointCloudPtr& feature_cloud_glo
     m_feature_cloud_global = feature_cloud_global;
     
     if (!m_feature_cloud_global) {
-        spdlog::warn("[LidarFrame] Frame {} global feature cloud set to null", m_frame_id);
+        LOG_WARN("[LidarFrame] Frame {} global feature cloud set to null", m_frame_id);
     }
 }
 
@@ -186,9 +186,9 @@ void LidarFrame::set_local_map(const PointCloudPtr& local_map) {
     m_local_map = local_map;
     
     if (!m_local_map) {
-        spdlog::warn("[LidarFrame] Frame {} local map set to null", m_frame_id);
+        LOG_WARN("[LidarFrame] Frame {} local map set to null", m_frame_id);
     } else {
-        spdlog::debug("[LidarFrame] Frame {} local map set with {} points", m_frame_id, m_local_map->size());
+        LOG_DEBUG("[LidarFrame] Frame {} local map set with {} points", m_frame_id, m_local_map->size());
     }
 }
 
@@ -196,7 +196,7 @@ PointCloudPtr LidarFrame::get_world_cloud() const {
     PointCloudPtr cloud_to_transform = m_processed_cloud ? m_processed_cloud : m_raw_cloud;
     
     if (!cloud_to_transform || cloud_to_transform->empty()) {
-        spdlog::warn("[LidarFrame] Frame {} has no valid cloud for world transformation", m_frame_id);
+        LOG_WARN("[LidarFrame] Frame {} has no valid cloud for world transformation", m_frame_id);
         return std::make_shared<PointCloud>();
     }
     
@@ -209,7 +209,7 @@ PointCloudPtr LidarFrame::get_world_cloud() const {
     try {
         util::transform_point_cloud(cloud_to_transform, world_cloud, transform_matrix);
     } catch (const std::exception& e) {
-        spdlog::error("[LidarFrame] Frame {} world cloud transformation failed: {}", m_frame_id, e.what());
+        LOG_ERROR("[LidarFrame] Frame {} world cloud transformation failed: {}", m_frame_id, e.what());
         return std::make_shared<PointCloud>();
     }
     
@@ -222,7 +222,7 @@ void LidarFrame::build_kdtree() {
     PointCloudPtr cloud_for_kdtree = m_processed_cloud ? m_processed_cloud : m_raw_cloud;
     
     if (!cloud_for_kdtree || cloud_for_kdtree->empty()) {
-        spdlog::warn("[LidarFrame] Frame {} cannot build KdTree: no valid cloud", m_frame_id);
+        LOG_WARN("[LidarFrame] Frame {} cannot build KdTree: no valid cloud", m_frame_id);
         m_kdtree_built = false;
         return;
     }
@@ -232,11 +232,11 @@ void LidarFrame::build_kdtree() {
         m_kdtree->setInputCloud(cloud_for_kdtree);
         m_kdtree_built = true;
         
-        spdlog::debug("[LidarFrame] Frame {} KdTree built with {} points", 
+        LOG_DEBUG("[LidarFrame] Frame {} KdTree built with {} points", 
                      m_frame_id, cloud_for_kdtree->size());
         
     } catch (const std::exception& e) {
-        spdlog::error("[LidarFrame] Frame {} KdTree build failed: {}", m_frame_id, e.what());
+        LOG_ERROR("[LidarFrame] Frame {} KdTree build failed: {}", m_frame_id, e.what());
         m_kdtree.reset();
         m_kdtree_built = false;
     }
@@ -255,14 +255,14 @@ KdTreePtr LidarFrame::get_kdtree() {
 void LidarFrame::set_correspondences(const CorrespondenceVector& correspondences) {
     m_correspondences = correspondences;
     
-    spdlog::debug("[LidarFrame] Frame {} correspondences set: {} total, {} valid", 
+    LOG_DEBUG("[LidarFrame] Frame {} correspondences set: {} total, {} valid", 
                  m_frame_id, m_correspondences.size(), get_correspondence_count());
 }
 
 void LidarFrame::clear_correspondences() {
     m_correspondences.clear();
     
-    spdlog::debug("[LidarFrame] Frame {} correspondences cleared", m_frame_id);
+    LOG_DEBUG("[LidarFrame] Frame {} correspondences cleared", m_frame_id);
 }
 
 // ===== Statistics =====
@@ -294,7 +294,7 @@ void LidarFrame::build_local_map_kdtree() {
 
 
     if (!m_local_map || m_local_map->empty()) {
-        spdlog::warn("[LidarFrame] Cannot build KdTree: local map is empty for frame {}", m_frame_id);
+        LOG_WARN("[LidarFrame] Cannot build KdTree: local map is empty for frame {}", m_frame_id);
         m_local_map_kdtree_built = false;
         return;
     }
@@ -311,7 +311,7 @@ void LidarFrame::clear_local_map_kdtree() {
     if (m_local_map_kdtree) {
         m_local_map_kdtree.reset();
         m_local_map_kdtree_built = false;
-        spdlog::debug("[LidarFrame] Cleared KdTree for frame {}", m_frame_id);
+        LOG_DEBUG("[LidarFrame] Cleared KdTree for frame {}", m_frame_id);
     }
 }
 
@@ -319,7 +319,7 @@ void LidarFrame::clear_local_map() {
     if (m_local_map) {
         m_local_map->clear();
         m_local_map.reset();
-        spdlog::debug("[LidarFrame] Cleared local map for frame {}", m_frame_id);
+        LOG_DEBUG("[LidarFrame] Cleared local map for frame {}", m_frame_id);
     }
 }
 
@@ -340,7 +340,7 @@ void LidarFrame::clear_heavy_data_for_old_keyframe() {
     m_correspondences.clear();
     m_correspondences.shrink_to_fit();
     
-    spdlog::debug("[LidarFrame] Cleared heavy data for old keyframe {}", m_keyframe_id);
+    LOG_DEBUG("[LidarFrame] Cleared heavy data for old keyframe {}", m_keyframe_id);
 }
 
 void LidarFrame::clear_non_keyframe_data() {
@@ -361,7 +361,7 @@ void LidarFrame::clear_non_keyframe_data() {
     m_correspondences.clear();
     m_correspondences.shrink_to_fit();
     
-    spdlog::debug("[LidarFrame] Cleared non-keyframe data for frame {}", m_frame_id);
+    LOG_DEBUG("[LidarFrame] Cleared non-keyframe data for frame {}", m_frame_id);
 }
 
 KdTreePtr LidarFrame::get_local_map_kdtree() {

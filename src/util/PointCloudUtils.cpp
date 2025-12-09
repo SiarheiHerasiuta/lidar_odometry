@@ -10,7 +10,7 @@
  */
 
 #include "PointCloudUtils.h"
-#include <spdlog/spdlog.h>
+#include "util/LogUtils.h"
 #include <filesystem>
 
 namespace lidar_odometry {
@@ -21,14 +21,14 @@ PointCloud::Ptr load_kitti_binary(const std::string& filename) {
     
     // Check if file exists
     if (!std::filesystem::exists(filename)) {
-        spdlog::error("KITTI binary file does not exist: {}", filename);
+        LOG_ERROR("KITTI binary file does not exist: {}", filename);
         return cloud;
     }
     
     // Open binary file
     std::ifstream file(filename, std::ios::binary);
     if (!file.is_open()) {
-        spdlog::error("Failed to open KITTI binary file: {}", filename);
+        LOG_ERROR("Failed to open KITTI binary file: {}", filename);
         return cloud;
     }
     
@@ -42,7 +42,7 @@ PointCloud::Ptr load_kitti_binary(const std::string& filename) {
     size_t num_points = file_size / (4 * sizeof(float));
     cloud->reserve(num_points);
     
-    spdlog::debug("Loading KITTI binary file: {} ({} points)", filename, num_points);
+    LOG_DEBUG("Loading KITTI binary file: {} ({} points)", filename, num_points);
     
     // Read points
     std::vector<float> buffer(4); // x, y, z, intensity
@@ -50,7 +50,7 @@ PointCloud::Ptr load_kitti_binary(const std::string& filename) {
         file.read(reinterpret_cast<char*>(buffer.data()), 4 * sizeof(float));
         
         if (file.gcount() != 4 * sizeof(float)) {
-            spdlog::warn("Incomplete read at point {} in file {}", i, filename);
+            LOG_WARN("Incomplete read at point {} in file {}", i, filename);
             break;
         }
         
@@ -59,14 +59,14 @@ PointCloud::Ptr load_kitti_binary(const std::string& filename) {
     }
     
     file.close();
-    spdlog::debug("Successfully loaded {} points from {}", cloud->size(), filename);
+    LOG_DEBUG("Successfully loaded {} points from {}", cloud->size(), filename);
     
     return cloud;
 }
 
 bool save_kitti_binary(const PointCloud::ConstPtr& cloud, const std::string& filename) {
     if (!cloud || cloud->empty()) {
-        spdlog::error("Cannot save empty point cloud to {}", filename);
+        LOG_ERROR("Cannot save empty point cloud to {}", filename);
         return false;
     }
     
@@ -77,7 +77,7 @@ bool save_kitti_binary(const PointCloud::ConstPtr& cloud, const std::string& fil
     // Open binary file for writing
     std::ofstream file(filename, std::ios::binary);
     if (!file.is_open()) {
-        spdlog::error("Failed to open file for writing: {}", filename);
+        LOG_ERROR("Failed to open file for writing: {}", filename);
         return false;
     }
     
@@ -94,7 +94,7 @@ bool save_kitti_binary(const PointCloud::ConstPtr& cloud, const std::string& fil
     }
     
     file.close();
-    spdlog::debug("Successfully saved {} points to {}", cloud->size(), filename);
+    LOG_DEBUG("Successfully saved {} points to {}", cloud->size(), filename);
     
     return true;
 }
@@ -103,7 +103,7 @@ void transform_point_cloud(const PointCloud::ConstPtr& input,
                           PointCloud::Ptr& output,
                           const Eigen::Matrix4f& transformation) {
     if (!input) {
-        spdlog::error("Input point cloud is null");
+        LOG_ERROR("Input point cloud is null");
         return;
     }
     
@@ -126,7 +126,7 @@ void transform_point_cloud(const PointCloud::ConstPtr& input,
 
 void copy_point_cloud(const PointCloud::ConstPtr& input, PointCloud::Ptr& output) {
     if (!input) {
-        spdlog::error("Input point cloud is null");
+        LOG_ERROR("Input point cloud is null");
         return;
     }
     
@@ -145,7 +145,7 @@ void copy_point_cloud(const PointCloud::ConstPtr& input, PointCloud::Ptr& output
 
 bool save_point_cloud_ply(const std::string& filename, const PointCloud::ConstPtr& cloud) {
     if (!cloud || cloud->empty()) {
-        spdlog::error("Cannot save empty point cloud to PLY: {}", filename);
+        LOG_ERROR("Cannot save empty point cloud to PLY: {}", filename);
         return false;
     }
     
@@ -156,7 +156,7 @@ bool save_point_cloud_ply(const std::string& filename, const PointCloud::ConstPt
     // Open binary file for writing
     std::ofstream file(filename, std::ios::binary);
     if (!file.is_open()) {
-        spdlog::error("Failed to open PLY file for writing: {}", filename);
+        LOG_ERROR("Failed to open PLY file for writing: {}", filename);
         return false;
     }
     
@@ -178,7 +178,7 @@ bool save_point_cloud_ply(const std::string& filename, const PointCloud::ConstPt
     }
     
     file.close();
-    spdlog::info("Successfully saved {} points to PLY: {}", cloud->size(), filename);
+    LOG_INFO("Successfully saved {} points to PLY: {}", cloud->size(), filename);
     
     return true;
 }

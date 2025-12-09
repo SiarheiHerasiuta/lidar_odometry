@@ -29,25 +29,25 @@ LoopClosureDetector::LoopClosureDetector(const LoopClosureConfig& config)
         2     // matchNum: both forward and reverse directions
     );
     
-    spdlog::info("[LoopClosureDetector] Initialized with similarity_threshold={:.3f}, min_gap={}, max_distance={:.1f}m",
+    LOG_INFO("[LoopClosureDetector] Initialized with similarity_threshold={:.3f}, min_gap={}, max_distance={:.1f}m",
                  m_config.similarity_threshold, m_config.min_keyframe_gap, m_config.max_search_distance);
 }
 
 LoopClosureDetector::~LoopClosureDetector() {
-    spdlog::info("[LoopClosureDetector] Statistics: {} queries, {} candidates found",
+    LOG_INFO("[LoopClosureDetector] Statistics: {} queries, {} candidates found",
                  m_total_queries, m_total_candidates);
 }
 
 bool LoopClosureDetector::add_keyframe(std::shared_ptr<database::LidarFrame> keyframe) {
     if (!keyframe) {
-        spdlog::warn("[LoopClosureDetector] Null keyframe provided");
+        LOG_WARN("[LoopClosureDetector] Null keyframe provided");
         return false;
     }
     
     // Convert point cloud immediately (before it gets cleared) and store data
     auto simple_cloud = convert_to_simple_cloud(keyframe);
     if (simple_cloud.empty()) {
-        spdlog::warn("[LoopClosureDetector] Empty point cloud for keyframe {}", keyframe->get_keyframe_id());
+        LOG_WARN("[LoopClosureDetector] Empty point cloud for keyframe {}", keyframe->get_keyframe_id());
         return false;
     }
     
@@ -62,7 +62,7 @@ bool LoopClosureDetector::add_keyframe(std::shared_ptr<database::LidarFrame> key
     }
     
     if (m_config.enable_debug_output) {
-        spdlog::debug("[LoopClosureDetector] Queued keyframe {} for lazy feature extraction (pending: {})",
+        LOG_DEBUG("[LoopClosureDetector] Queued keyframe {} for lazy feature extraction (pending: {})",
                      keyframe->get_keyframe_id(), m_pending_keyframes.size());
     }
     
@@ -79,7 +79,7 @@ std::vector<LoopCandidate> LoopClosureDetector::detect_loop_closures(
     }
     
     if (!current_keyframe) {
-        spdlog::warn("[LoopClosureDetector] Null current keyframe provided");
+        LOG_WARN("[LoopClosureDetector] Null current keyframe provided");
         return candidates;
     }
     
@@ -109,7 +109,7 @@ std::vector<LoopCandidate> LoopClosureDetector::detect_loop_closures(
         auto simple_cloud = convert_to_simple_cloud(current_keyframe);
         
         if (simple_cloud.empty()) {
-            spdlog::warn("[LoopClosureDetector] Empty point cloud for current keyframe {}", 
+            LOG_WARN("[LoopClosureDetector] Empty point cloud for current keyframe {}", 
                         current_keyframe->get_keyframe_id());
             return candidates;
         }
@@ -177,21 +177,21 @@ std::vector<LoopCandidate> LoopClosureDetector::detect_loop_closures(
         m_total_candidates += candidates.size();
         
         if (!candidates.empty()) {
-            spdlog::debug("[LoopClosureDetector] Found {} loop candidates for keyframe {} (search time: {}ms)",
+            LOG_DEBUG("[LoopClosureDetector] Found {} loop candidates for keyframe {} (search time: {}ms)",
                         candidates.size(), current_id, duration);
             
             for (const auto& candidate : candidates) {
-                spdlog::debug("  -> Candidate: {} <-> {} (distance: {:.4f}, bias: {})",
+                LOG_DEBUG("  -> Candidate: {} <-> {} (distance: {:.4f}, bias: {})",
                            candidate.query_keyframe_id, candidate.match_keyframe_id,
                            candidate.similarity_score, candidate.bias);
             }
         } else if (m_config.enable_debug_output) {
-            spdlog::debug("[LoopClosureDetector] No loop candidates found for keyframe {} (min_distance: {:.4f}, search time: {}ms)",
+            LOG_DEBUG("[LoopClosureDetector] No loop candidates found for keyframe {} (min_distance: {:.4f}, search time: {}ms)",
                          current_id, min_similarity, duration);
         }
         
     } catch (const std::exception& e) {
-        spdlog::error("[LoopClosureDetector] Exception detecting loops for keyframe {}: {}", 
+        LOG_ERROR("[LoopClosureDetector] Exception detecting loops for keyframe {}: {}", 
                      current_keyframe->get_keyframe_id(), e.what());
     }
     
@@ -200,7 +200,7 @@ std::vector<LoopCandidate> LoopClosureDetector::detect_loop_closures(
 
 void LoopClosureDetector::update_config(const LoopClosureConfig& config) {
     m_config = config;
-    spdlog::debug("[LoopClosureDetector] Configuration updated: threshold={:.3f}, min_gap={}",
+    LOG_DEBUG("[LoopClosureDetector] Configuration updated: threshold={:.3f}, min_gap={}",
                  m_config.similarity_threshold, m_config.min_keyframe_gap);
 }
 
@@ -209,7 +209,7 @@ void LoopClosureDetector::clear() {
     m_keyframe_ids.clear();
     m_total_queries = 0;
     m_total_candidates = 0;
-    spdlog::info("[LoopClosureDetector] Database cleared");
+    LOG_INFO("[LoopClosureDetector] Database cleared");
 }
 
 SimplePointCloud LoopClosureDetector::convert_to_simple_cloud(
@@ -221,7 +221,7 @@ SimplePointCloud LoopClosureDetector::convert_to_simple_cloud(
     // LiDAR Iris requires sensor-centric point cloud for consistent BEV representation
     auto feature_cloud = lidar_frame->get_feature_cloud();
     if (!feature_cloud || feature_cloud->empty()) {
-        spdlog::warn("[LoopClosureDetector] No feature cloud available for keyframe {}", 
+        LOG_WARN("[LoopClosureDetector] No feature cloud available for keyframe {}", 
                     lidar_frame->get_keyframe_id());
         return simple_cloud;
     }

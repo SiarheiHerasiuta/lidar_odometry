@@ -12,7 +12,7 @@
 #include "IterativeClosestPointOptimizer.h"
 #include "../util/MathUtils.h"
 #include "../util/PointCloudUtils.h"
-#include <spdlog/spdlog.h>
+#include "util/LogUtils.h"
 #include <chrono>
 #include <numeric>
 #include <algorithm>
@@ -23,7 +23,7 @@ namespace optimization {
 IterativeClosestPointOptimizer::IterativeClosestPointOptimizer(const ICPConfig& config)
     : m_config(config), m_adaptive_estimator(nullptr) {
     
-    spdlog::info("[IterativeClosestPointOptimizer] Initialized with max_iterations={}, max_correspondence_distance={}", 
+    LOG_INFO("[IterativeClosestPointOptimizer] Initialized with max_iterations={}, max_correspondence_distance={}", 
                  m_config.max_iterations, m_config.max_correspondence_distance);
 }
 
@@ -31,7 +31,7 @@ IterativeClosestPointOptimizer::IterativeClosestPointOptimizer(const ICPConfig& 
                                             std::shared_ptr<optimization::AdaptiveMEstimator> adaptive_estimator)
     : m_config(config), m_adaptive_estimator(adaptive_estimator) {
     
-    spdlog::info("[IterativeClosestPointOptimizer] Initialized with max_iterations={}, max_correspondence_distance={} and AdaptiveMEstimator", 
+    LOG_INFO("[IterativeClosestPointOptimizer] Initialized with max_iterations={}, max_correspondence_distance={} and AdaptiveMEstimator", 
                  m_config.max_iterations, m_config.max_correspondence_distance);
 }
 
@@ -78,7 +78,7 @@ bool IterativeClosestPointOptimizer::optimize_loop(std::shared_ptr<database::Lid
         find_correspondences_loop(matched_keyframe_copy, curr_keyframe_copy, correspondences);
 
         if (correspondences.size() < static_cast<size_t>(m_config.min_correspondence_points)) {
-            spdlog::warn("[Loop ICP] Insufficient correspondences: {}", correspondences.size());
+            LOG_WARN("[Loop ICP] Insufficient correspondences: {}", correspondences.size());
             break;
         }
 
@@ -201,7 +201,7 @@ bool IterativeClosestPointOptimizer::optimize_loop(std::shared_ptr<database::Lid
         float rotation_delta = dw.norm();
 
         if (translation_delta < m_config.translation_tolerance && rotation_delta < m_config.rotation_tolerance) {
-            spdlog::debug("[ICP] Loop closure converged at iteration {}", icp_iter + 1);
+            LOG_DEBUG("[ICP] Loop closure converged at iteration {}", icp_iter + 1);
             optimized_relative_transform = curr_keyframe->get_pose().Inverse() * optimized_curr_pose;
             success = true;
             break;
@@ -238,7 +238,7 @@ bool IterativeClosestPointOptimizer::optimize_loop(std::shared_ptr<database::Lid
         }
 
         inlier_ratio = static_cast<float>(inlier_count) / static_cast<float>(total_count);
-        spdlog::debug("[ICP] Loop closure inlier ratio: {:.3f}", inlier_ratio);
+        LOG_DEBUG("[ICP] Loop closure inlier ratio: {:.3f}", inlier_ratio);
 
         if (inlier_ratio < 0.5f) {
             success = false;
@@ -286,7 +286,7 @@ bool IterativeClosestPointOptimizer::optimize(map::VoxelMap* voxel_map,
         size_t num_correspondences = find_correspondences(voxel_map, curr_frame, correspondences);
         
         if (num_correspondences < static_cast<size_t>(m_config.min_correspondence_points)) {
-            spdlog::warn("[ICP] Insufficient correspondences: {} < {} at iteration {}", 
+            LOG_WARN("[ICP] Insufficient correspondences: {} < {} at iteration {}", 
                         num_correspondences, m_config.min_correspondence_points, icp_iter + 1);
             return false;
         }
@@ -462,7 +462,7 @@ size_t IterativeClosestPointOptimizer::find_correspondences_loop(std::shared_ptr
     auto local_feature_curr = get_frame_cloud(curr_keyframe);     // Current frame feature cloud (local coordinates)
 
     if(!local_feature_curr || !local_map_last || local_feature_curr->empty() || local_map_last->empty()) {
-        spdlog::warn("[IterativeClosestPointOptimizer] Empty point clouds - curr_map: {}, matched_map: {}",
+        LOG_WARN("[IterativeClosestPointOptimizer] Empty point clouds - curr_map: {}, matched_map: {}",
                      local_feature_curr ? local_feature_curr->size() : 0,
                      local_map_last ? local_map_last->size() : 0);
         return 0;
@@ -471,7 +471,7 @@ size_t IterativeClosestPointOptimizer::find_correspondences_loop(std::shared_ptr
     auto kdtree_last_ptr = last_keyframe->get_local_map_kdtree();
 
     if(!kdtree_last_ptr) {
-        spdlog::error("[IterativeClosestPointOptimizer] Last keyframe has no KdTree - this should not happen!");
+        LOG_ERROR("[IterativeClosestPointOptimizer] Last keyframe has no KdTree - this should not happen!");
         return 0;
     }
 
@@ -581,14 +581,14 @@ size_t IterativeClosestPointOptimizer::find_correspondences(map::VoxelMap* voxel
     correspondences.clear();
     
     if (!voxel_map || voxel_map->empty()) {
-        spdlog::warn("[IterativeClosestPointOptimizer] VoxelMap is empty!");
+        LOG_WARN("[IterativeClosestPointOptimizer] VoxelMap is empty!");
         return 0;
     }
     
     auto curr_cloud = get_frame_cloud(curr_frame);     // Current frame feature cloud (local coordinates)
     
     if (!curr_cloud || curr_cloud->empty()) {
-        spdlog::warn("[IterativeClosestPointOptimizer] Empty curr_cloud");
+        LOG_WARN("[IterativeClosestPointOptimizer] Empty curr_cloud");
         return 0;
     }
     

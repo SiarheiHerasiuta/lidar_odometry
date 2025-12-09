@@ -16,8 +16,8 @@
 #include <limits>
 #include <chrono>
 #include <random>
-#include <spdlog/spdlog.h>
-#include <spdlog/fmt/fmt.h>
+#include "util/LogUtils.h"
+
 
 #include <iostream>
 #ifndef M_PI
@@ -64,7 +64,7 @@ double AdaptiveMEstimator::calculate_scale_factor(
     const std::vector<double>& residuals) {
     
     if (residuals.empty()) {
-        SPDLOG_WARN("Empty residuals vector, using default scale factor");
+        LOG_WARN("Empty residuals vector, using default scale factor");
         return 1.0;
     }
 
@@ -202,7 +202,7 @@ double AdaptiveMEstimator::calculate_information_matrix(const std::vector<double
 
 double AdaptiveMEstimator::calculate_information_weight(double residual, double scale_factor) const {
     if (scale_factor <= 0.0) {
-        spdlog::warn("[AdaptiveMEstimator] Invalid scale factor for information weight: {}", scale_factor);
+        LOG_WARN("[AdaptiveMEstimator] Invalid scale factor for information weight: {}", scale_factor);
         return 1.0;
     }
     
@@ -266,7 +266,7 @@ double AdaptiveMEstimator::calculate_pko_scale_factor(const std::vector<double>&
         
         double js_divergence = calculate_js_divergence(residuals, alpha);
 
-        // spdlog::info("[AdaptiveMEstimator] Alpha: {:.6f}, JS Divergence: {:.6f}", alpha, js_divergence);
+        // LOG_INFO("[AdaptiveMEstimator] Alpha: {:.6f}, JS Divergence: {:.6f}", alpha, js_divergence);
         
         if (js_divergence < best_cost) {
             best_cost = js_divergence;
@@ -274,7 +274,7 @@ double AdaptiveMEstimator::calculate_pko_scale_factor(const std::vector<double>&
         }
     }
 
-    // spdlog::error("Best Alpha: {:.6f}, Best JS Divergence: {:.6f}", best_alpha, best_cost);
+    // LOG_ERROR("Best Alpha: {:.6f}, Best JS Divergence: {:.6f}", best_alpha, best_cost);
     
     // Update reference alpha
     m_alpha_star_ref = best_alpha;
@@ -285,7 +285,7 @@ double AdaptiveMEstimator::calculate_pko_scale_factor(const std::vector<double>&
     // Log residual histogram with updated scale factor
     log_residual_histogram(residuals);
 
-    // spdlog::info("[AdaptiveMEstimator] Selected PKO scale factor (alpha*): {:.6f}, JS Divergence: {:.6f}", best_alpha, best_cost);
+    // LOG_INFO("[AdaptiveMEstimator] Selected PKO scale factor (alpha*): {:.6f}, JS Divergence: {:.6f}", best_alpha, best_cost);
     
     return best_alpha;
 }
@@ -521,10 +521,10 @@ void AdaptiveMEstimator::kmeans_init(const std::vector<double>& residuals) {
         for (int i = 0; i < m_config.gmm_components; ++i) {
             m_gmm_means[i] = picks[i];
         }
-        spdlog::debug("[AdaptiveMEstimator] Using {} picks for GMM initialization", picks.size());
+        LOG_DEBUG("[AdaptiveMEstimator] Using {} picks for GMM initialization", picks.size());
     } else {
         // Pick이 부족하면 기존 K-means++ 방식 사용
-        spdlog::debug("[AdaptiveMEstimator] Insufficient picks ({}), using K-means++ initialization", picks.size());
+        LOG_DEBUG("[AdaptiveMEstimator] Insufficient picks ({}), using K-means++ initialization", picks.size());
         
         std::mt19937 gen(42); // Fixed seed for consistency
         std::uniform_int_distribution<> dis(0, sampled_data.size() - 1);
@@ -666,7 +666,7 @@ std::vector<double> AdaptiveMEstimator::detect_picks_for_init(const std::vector<
         picks_str += "...";
     }
     
-    spdlog::debug("[AdaptiveMEstimator] Detected {} picks from {} bins: [{}]", 
+    LOG_DEBUG("[AdaptiveMEstimator] Detected {} picks from {} bins: [{}]", 
                   filtered_picks.size(), num_bins, picks_str);
     
     return filtered_picks;
@@ -803,7 +803,7 @@ void AdaptiveMEstimator::log_residual_histogram(const std::vector<double>& resid
     double range = max_val - min_val;
     
     if (range < 1e-10) {
-        SPDLOG_INFO("Residual histogram: All values are ~{:.6f}", min_val);
+        LOG_INFO("Residual histogram: All values are ~{:.6f}", min_val);
         return;
     }
     
@@ -857,8 +857,8 @@ void AdaptiveMEstimator::log_residual_histogram(const std::vector<double>& resid
     /*
     // Log histogram with three distributions
 
-    SPDLOG_INFO("                                | [Residual Distribution] | [   P_data(inlier|r)  ] |         [P_model(inlier|r,c)]        |");
-    SPDLOG_INFO("                                |-------------------------|-------------------------|--------------------------------------|");
+    LOG_INFO("                                | [Residual Distribution] | [   P_data(inlier|r)  ] |         [P_model(inlier|r,c)]        |");
+    LOG_INFO("                                |-------------------------|-------------------------|--------------------------------------|");
 
     // Find maximum count for proper normalization
     int max_count = *std::max_element(bins.begin(), bins.end());
@@ -905,7 +905,7 @@ void AdaptiveMEstimator::log_residual_histogram(const std::vector<double>& resid
             scale_indicator = " <-- SCALE FACTOR";
         }
         
-        SPDLOG_INFO("  [{:7.4f},{:7.4f}): {:3d}({:4.1f}%) |{}|{}|{}| w={:.3f}{}", 
+        LOG_INFO("  [{:7.4f},{:7.4f}): {:3d}({:4.1f}%) |{}|{}|{}| w={:.3f}{}", 
                    bin_start, bin_end, count, percentage, 
                    residual_bar, gmm_bar, weight_bar, avg_weight, scale_indicator);
     }

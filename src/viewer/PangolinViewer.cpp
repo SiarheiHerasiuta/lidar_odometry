@@ -11,9 +11,9 @@
 
 #include "PangolinViewer.h"
 #include "../database/LidarFrame.h"
-#include "../util/Config.h"
+#include "../util/ConfigUtils.h"
 #include "../map/VoxelMap.h"
-#include <spdlog/spdlog.h>
+#include "util/LogUtils.h"
 #include <iostream>
 #include <cmath>
 
@@ -60,14 +60,14 @@ PangolinViewer::PangolinViewer()
         m_coordinate_frame_size = static_cast<float>(config.coordinate_frame_size);
         m_coordinate_frame_width = static_cast<float>(config.coordinate_frame_width);
         
-        spdlog::info("[PangolinViewer] Config applied - top_view_follow: {}, coord_size: {}, coord_width: {}", 
+        LOG_INFO("[PangolinViewer] Config applied - top_view_follow: {}, coord_size: {}, coord_width: {}", 
                     config.top_view_follow, m_coordinate_frame_size, m_coordinate_frame_width);
         
         // Debug: Check if settings are properly applied
-        spdlog::info("[PangolinViewer] UI state - top_view_follow: {}", 
+        LOG_INFO("[PangolinViewer] UI state - top_view_follow: {}", 
                     m_top_view_follow.Get());
     } catch (const std::exception& e) {
-        spdlog::warn("[PangolinViewer] Could not load config settings: {}", e.what());
+        LOG_WARN("[PangolinViewer] Could not load config settings: {}", e.what());
     }
 }
 
@@ -76,7 +76,7 @@ PangolinViewer::~PangolinViewer() {
 }
 
 bool PangolinViewer::initialize(int width, int height) {
-    spdlog::info("[PangolinViewer] Starting initialization with window size {}x{}", width, height);
+    LOG_INFO("[PangolinViewer] Starting initialization with window size {}x{}", width, height);
     
     // Start render thread
     m_should_stop = false;
@@ -106,13 +106,13 @@ bool PangolinViewer::initialize(int width, int height) {
 
             m_initialized = true;
             m_thread_ready = true;
-            spdlog::info("[PangolinViewer] Render thread initialized successfully");
+            LOG_INFO("[PangolinViewer] Render thread initialized successfully");
 
             // Run render loop
             render_loop();
             
         } catch (const std::exception& e) {
-            spdlog::error("[PangolinViewer] Exception in render thread: {}", e.what());
+            LOG_ERROR("[PangolinViewer] Exception in render thread: {}", e.what());
             m_initialized = false;
             m_thread_ready = false;
             return;
@@ -122,10 +122,10 @@ bool PangolinViewer::initialize(int width, int height) {
         try {
             pangolin::DestroyWindow("LiDAR Odometry with Probabilistic Kernel Optimization (PKO)");
         } catch (const std::exception& e) {
-            spdlog::warn("[PangolinViewer] Exception during window cleanup: {}", e.what());
+            LOG_WARN("[PangolinViewer] Exception during window cleanup: {}", e.what());
         }
         m_initialized = false;
-        spdlog::info("[PangolinViewer] Render thread finished");
+        LOG_INFO("[PangolinViewer] Render thread finished");
     });
     
     // Wait for thread to be ready with timeout
@@ -135,7 +135,7 @@ bool PangolinViewer::initialize(int width, int height) {
     }
     
     if (!m_thread_ready) {
-        spdlog::error("[PangolinViewer] Failed to initialize render thread within timeout");
+        LOG_ERROR("[PangolinViewer] Failed to initialize render thread within timeout");
         m_should_stop = true;
         if (m_render_thread.joinable()) {
             m_render_thread.join();
@@ -143,7 +143,7 @@ bool PangolinViewer::initialize(int width, int height) {
         return false;
     }
     
-    spdlog::info("[PangolinViewer] Initialized successfully with window size {}x{}", width, height);
+    LOG_INFO("[PangolinViewer] Initialized successfully with window size {}x{}", width, height);
     return m_thread_ready;
 }
 
@@ -160,12 +160,12 @@ void PangolinViewer::setup_panels() {
     pangolin::View& d_panel = pangolin::CreatePanel("ui")
         .SetBounds(0.0, 1.0, 0.0, pangolin::Attach::Frac(ui_panel_ratio));
     
-    spdlog::info("[PangolinViewer] UI panel and 3D display created successfully");
+    LOG_INFO("[PangolinViewer] UI panel and 3D display created successfully");
 }
 
 void PangolinViewer::shutdown() {
     if (m_initialized || m_thread_ready) {
-        spdlog::info("[PangolinViewer] Shutting down viewer...");
+        LOG_INFO("[PangolinViewer] Shutting down viewer...");
         m_should_stop = true;
         
         if (m_render_thread.joinable()) {
@@ -174,7 +174,7 @@ void PangolinViewer::shutdown() {
         
         m_initialized = false;
         m_thread_ready = false;
-        spdlog::info("[PangolinViewer] Viewer shutdown completed");
+        LOG_INFO("[PangolinViewer] Viewer shutdown completed");
     }
 }
 
@@ -187,12 +187,12 @@ bool PangolinViewer::is_ready() const {
 }
 
 void PangolinViewer::render_loop() {
-    spdlog::info("[PangolinViewer] Starting render loop");
+    LOG_INFO("[PangolinViewer] Starting render loop");
     
     while (!m_should_stop) {
         // Check if window should quit
         if (pangolin::ShouldQuit()) {
-            spdlog::info("[PangolinViewer] Pangolin quit requested");
+            LOG_INFO("[PangolinViewer] Pangolin quit requested");
             m_should_stop = true;
             break;
         }
@@ -211,7 +211,7 @@ void PangolinViewer::render_loop() {
         PointCloudConstPtr pre_icp_cloud_copy;
         PointCloudConstPtr post_icp_cloud_copy;
 
-        // spdlog::info("[PangolinViewer] Acquiring data lock for rendering");
+        // LOG_INFO("[PangolinViewer] Acquiring data lock for rendering");
         
         {
             std::lock_guard<std::mutex> lock(m_data_mutex);
@@ -224,7 +224,7 @@ void PangolinViewer::render_loop() {
         }
 
 
-        // spdlog::info("[PangolinViewer] After acquiring data lock for rendering");
+        // LOG_INFO("[PangolinViewer] After acquiring data lock for rendering");
 
         // Draw 3D content - no more locks needed
         // Grid drawing disabled
@@ -355,14 +355,14 @@ void PangolinViewer::render_loop() {
 
         // Check UI button states and changes
         if (m_finish_button.Get()) {
-            spdlog::info("[PangolinViewer] Finish button pressed");
+            LOG_INFO("[PangolinViewer] Finish button pressed");
             m_finish_pressed = true;
             m_should_stop = true;
         }
         
         // Check Step Forward button
         if (Pushed(m_step_forward_button)) {
-            spdlog::info("[PangolinViewer] Step Forward button pressed");
+            LOG_INFO("[PangolinViewer] Step Forward button pressed");
             m_step_forward_pressed = true;
         }
 
@@ -391,7 +391,7 @@ void PangolinViewer::render_loop() {
         std::this_thread::sleep_for(std::chrono::milliseconds(16));
     }
     
-    spdlog::info("[PangolinViewer] Render loop finished");
+    LOG_INFO("[PangolinViewer] Render loop finished");
 }
 
 void PangolinViewer::reset_camera() {
@@ -446,7 +446,7 @@ void PangolinViewer::add_trajectory_frame(std::shared_ptr<database::LidarFrame> 
         size_t excess = m_trajectory_frames.size() - MAX_TRAJECTORY_FRAMES;
         m_trajectory_frames.erase(m_trajectory_frames.begin(), 
                                   m_trajectory_frames.begin() + excess);
-        spdlog::debug("[PangolinViewer] Trajectory sliding window: removed {} old frames, keeping {}", 
+        LOG_DEBUG("[PangolinViewer] Trajectory sliding window: removed {} old frames, keeping {}", 
                      excess, m_trajectory_frames.size());
     }
 }
@@ -858,7 +858,7 @@ void PangolinViewer::add_keyframe(std::shared_ptr<database::LidarFrame> keyframe
     
     if (keyframe) {
         Vector3f position = keyframe->get_pose().Translation();
-        spdlog::debug("[PangolinViewer] Added keyframe {} at position ({:.2f}, {:.2f}, {:.2f})",
+        LOG_DEBUG("[PangolinViewer] Added keyframe {} at position ({:.2f}, {:.2f}, {:.2f})",
                       keyframe->get_keyframe_id(), position.x(), position.y(), position.z());
     }
 }
@@ -866,7 +866,7 @@ void PangolinViewer::add_keyframe(std::shared_ptr<database::LidarFrame> keyframe
 void PangolinViewer::clear_keyframes() {
     std::lock_guard<std::mutex> lock(m_data_mutex);
     m_keyframes.clear();
-    spdlog::debug("[PangolinViewer] Cleared all keyframes");
+    LOG_DEBUG("[PangolinViewer] Cleared all keyframes");
 }
 
 void PangolinViewer::draw_keyframes() {
@@ -927,9 +927,9 @@ void PangolinViewer::update_last_keyframe(std::shared_ptr<database::LidarFrame> 
     m_last_keyframe = last_keyframe;
     
     if (last_keyframe) {
-        spdlog::debug("[PangolinViewer] Updated last keyframe (ID: {})", last_keyframe->get_keyframe_id());
+        LOG_DEBUG("[PangolinViewer] Updated last keyframe (ID: {})", last_keyframe->get_keyframe_id());
     } else {
-        spdlog::debug("[PangolinViewer] Cleared last keyframe");
+        LOG_DEBUG("[PangolinViewer] Cleared last keyframe");
     }
 }
 

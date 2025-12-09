@@ -12,7 +12,7 @@
 #include "VoxelMap.h"
 #include <algorithm>
 #include <cmath>
-#include <spdlog/spdlog.h>
+#include "util/LogUtils.h"
 
 namespace lidar_odometry {
 namespace map {
@@ -37,7 +37,7 @@ void VoxelMap::SetVoxelSize(float size) {
 
 void VoxelMap::SetHierarchyFactor(int factor) {
     if (factor <= 0 || factor % 2 == 0) {
-        spdlog::error("[VoxelMap] Hierarchy factor must be positive and odd. Got: {}", factor);
+        LOG_ERROR("[VoxelMap] Hierarchy factor must be positive and odd. Got: {}", factor);
         return;
     }
     

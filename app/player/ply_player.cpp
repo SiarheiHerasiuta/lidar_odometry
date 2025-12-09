@@ -25,11 +25,11 @@
 #include <cstring>
 #include <sys/resource.h>
 
-#include <spdlog/spdlog.h>
+#include "util/LogUtils.h"
 
-#include <util/Config.h>
+#include <util/ConfigUtils.h>
 #include <util/PointCloudUtils.h>
-#include <util/Types.h>
+#include <util/TypeUtils.h>
 #include <processing/Estimator.h>
 #include <database/LidarFrame.h>
 #include <viewer/PangolinViewer.h>
@@ -44,10 +44,10 @@ PLYPlayerResult PLYPlayer::run(const PLYPlayerConfig& config) {
         // 1. Load configuration
         util::ConfigManager::instance().load_from_file(config.config_path);
         const auto& system_config = util::ConfigManager::instance().get_config();
-        spdlog::info("[PLYPlayer] Successfully loaded configuration from: {}", config.config_path);
+        LOG_INFO("[PLYPlayer] Successfully loaded configuration from: {}", config.config_path);
 
 
-        spdlog::info("[PLYPlayer] Dataset path: {}", config.dataset_path);
+        LOG_INFO("[PLYPlayer] Dataset path: {}", config.dataset_path);
         
         // 2. Load dataset
         auto point_cloud_data = load_ply_point_cloud_list(config.dataset_path, 
@@ -59,7 +59,7 @@ PLYPlayerResult PLYPlayer::run(const PLYPlayerConfig& config) {
             return result;
         }
         
-        spdlog::info("[PLYPlayer] Loaded {} PLY files", point_cloud_data.size());
+        LOG_INFO("[PLYPlayer] Loaded {} PLY files", point_cloud_data.size());
         
         // 3. Initialize systems
         auto viewer = initialize_viewer(config);
@@ -70,7 +70,7 @@ PLYPlayerResult PLYPlayer::run(const PLYPlayerConfig& config) {
         context.step_mode = config.step_mode;
         context.auto_play = !config.step_mode;
         
-        // spdlog::info("[PLYPlayer] Processing frames {} to {} (step mode: {})", 
+        // LOG_INFO("[PLYPlayer] Processing frames {} to {} (step mode: {})", 
         //             0, point_cloud_data.size(), config.step_mode ? "enabled" : "disabled");
         
         context.current_idx = 0;
@@ -102,13 +102,13 @@ PLYPlayerResult PLYPlayer::run(const PLYPlayerConfig& config) {
             if (should_process_frame) {
                 const auto& current_data = point_cloud_data[context.current_idx];
                 
-                // spdlog::info("[PLYPlayer] Processing frame {}/{}: {}", 
+                // LOG_INFO("[PLYPlayer] Processing frame {}/{}: {}", 
                 //            context.current_idx + 1, point_cloud_data.size(), current_data.filename);
                 
                 // Load point cloud
                 auto point_cloud = load_ply_point_cloud(current_data.full_path);
                 if (!point_cloud || point_cloud->empty()) {
-                    spdlog::error("[PLYPlayer] Failed to load or empty point cloud: {}", current_data.full_path);
+                    LOG_ERROR("[PLYPlayer] Failed to load or empty point cloud: {}", current_data.full_path);
                     context.current_idx++;
                     continue;
                 }
@@ -154,17 +154,17 @@ PLYPlayerResult PLYPlayer::run(const PLYPlayerConfig& config) {
                 save_trajectory_kitti_format(context, trajectory_file);
             }
             
-            spdlog::info("[PLYPlayer] Saved trajectory to: {}", trajectory_file);
+            LOG_INFO("[PLYPlayer] Saved trajectory to: {}", trajectory_file);
         }
         
-        spdlog::info("[PLYPlayer] Processing completed successfully!");
-        spdlog::info("[PLYPlayer] Processed {} frames in {:.2f}s", 
+        LOG_INFO("[PLYPlayer] Processing completed successfully!");
+        LOG_INFO("[PLYPlayer] Processed {} frames in {:.2f}s", 
                     result.processed_frames, 
                     result.average_processing_time_ms * result.processed_frames / 1000.0);
         
         // Wait for viewer finish if enabled
         if (viewer) {
-            spdlog::info("[PLYPlayer] Processing completed! Close viewer to exit.");
+            LOG_INFO("[PLYPlayer] Processing completed! Close viewer to exit.");
             while (!viewer->should_close()) {
                 // Render runs in thread, no need for explicit call
                 std::this_thread::sleep_for(std::chrono::milliseconds(30));
@@ -173,7 +173,7 @@ PLYPlayerResult PLYPlayer::run(const PLYPlayerConfig& config) {
         
     } catch (const std::exception& e) {
         result.error_message = e.what();
-        spdlog::error("[PLYPlayer] Exception: {}", e.what());
+        LOG_ERROR("[PLYPlayer] Exception: {}", e.what());
     }
     
     return result;
@@ -204,11 +204,11 @@ PLYPlayerResult PLYPlayer::run_from_yaml(const std::string& config_path) {
         config.save_trajectory = true;
         config.trajectory_format = "tum";
         
-        spdlog::info("[PLYPlayer] Configuration from YAML:");
-        spdlog::info("  Dataset path: {}", config.dataset_path);
-        spdlog::info("  Sequence: {}", system_config.kitti_sequence);
-        spdlog::info("  Viewer enabled: {}", config.enable_viewer);
-        spdlog::info("  Step mode: {}", config.step_mode);
+        LOG_INFO("[PLYPlayer] Configuration from YAML:");
+        LOG_INFO("  Dataset path: {}", config.dataset_path);
+        LOG_INFO("  Sequence: {}", system_config.kitti_sequence);
+        LOG_INFO("  Viewer enabled: {}", config.enable_viewer);
+        LOG_INFO("  Step mode: {}", config.step_mode);
         
     } catch (const std::exception& e) {
         PLYPlayerResult result;
@@ -227,11 +227,11 @@ std::vector<PLYPointCloudData> PLYPlayer::load_ply_point_cloud_list(const std::s
     
     auto ply_files = get_ply_files(dataset_path);
     if (ply_files.empty()) {
-        spdlog::error("[PLYPlayer] No PLY files found in: {}", dataset_path);
+        LOG_ERROR("[PLYPlayer] No PLY files found in: {}", dataset_path);
         return ply_data;
     }
     
-    spdlog::info("[PLYPlayer] Found {} PLY files in dataset", ply_files.size());
+    LOG_INFO("[PLYPlayer] Found {} PLY files in dataset", ply_files.size());
     
     // Apply frame filtering
     for (size_t i = 0; i < ply_files.size(); ++i) {
@@ -259,7 +259,7 @@ std::vector<PLYPointCloudData> PLYPlayer::load_ply_point_cloud_list(const std::s
         ply_data.push_back(data);
     }
     
-    spdlog::info("[PLYPlayer] Selected {} frames for processing", ply_data.size());
+    LOG_INFO("[PLYPlayer] Selected {} frames for processing", ply_data.size());
     return ply_data;
 }
 
@@ -268,7 +268,7 @@ std::shared_ptr<lidar_odometry::util::PointCloud> PLYPlayer::load_ply_point_clou
     
     // Check if file exists
     if (!std::filesystem::exists(ply_file_path)) {
-        spdlog::error("[PLYPlayer] PLY file does not exist: {}", ply_file_path);
+        LOG_ERROR("[PLYPlayer] PLY file does not exist: {}", ply_file_path);
         return cloud;
     }
     
@@ -278,7 +278,7 @@ std::shared_ptr<lidar_odometry::util::PointCloud> PLYPlayer::load_ply_point_clou
     bool is_binary;
     
     if (!parse_ply_header(ply_file_path, vertex_count, properties, is_binary)) {
-        spdlog::error("[PLYPlayer] Failed to parse PLY header: {}", ply_file_path);
+        LOG_ERROR("[PLYPlayer] Failed to parse PLY header: {}", ply_file_path);
         return cloud;
     }
     
@@ -291,13 +291,13 @@ std::shared_ptr<lidar_odometry::util::PointCloud> PLYPlayer::load_ply_point_clou
     }
     
     if (x_idx == -1 || y_idx == -1 || z_idx == -1) {
-        spdlog::error("[PLYPlayer] PLY file missing x, y, or z coordinates: {}", ply_file_path);
+        LOG_ERROR("[PLYPlayer] PLY file missing x, y, or z coordinates: {}", ply_file_path);
         return cloud;
     }
     
     std::ifstream file(ply_file_path, is_binary ? std::ios::binary : std::ios::in);
     if (!file.is_open()) {
-        spdlog::error("[PLYPlayer] Failed to open PLY file: {}", ply_file_path);
+        LOG_ERROR("[PLYPlayer] Failed to open PLY file: {}", ply_file_path);
         return cloud;
     }
     
@@ -365,7 +365,7 @@ std::shared_ptr<lidar_odometry::util::PointCloud> PLYPlayer::load_ply_point_clou
     
     file.close();
     
-    spdlog::debug("[PLYPlayer] Loaded {} points from {}", cloud->size(), ply_file_path);
+    LOG_DEBUG("[PLYPlayer] Loaded {} points from {}", cloud->size(), ply_file_path);
     return cloud;
 }
 
@@ -444,16 +444,16 @@ bool PLYPlayer::parse_ply_header(const std::string& file_path,
     
     // Validate that we have x, y, z properties
     if (x_index == -1 || y_index == -1 || z_index == -1) {
-        spdlog::error("[PLYPlayer] PLY file missing x, y, or z coordinates");
+        LOG_ERROR("[PLYPlayer] PLY file missing x, y, or z coordinates");
         return false;
     }
     
     if (vertex_count == 0) {
-        spdlog::error("[PLYPlayer] PLY file has no vertices");
+        LOG_ERROR("[PLYPlayer] PLY file has no vertices");
         return false;
     }
     
-    spdlog::debug("[PLYPlayer] PLY header parsed: {} vertices, {} properties, {} format", 
+    LOG_DEBUG("[PLYPlayer] PLY header parsed: {} vertices, {} properties, {} format", 
                   vertex_count, properties.size(), is_binary ? "binary" : "ASCII");
     
     return true;
@@ -466,24 +466,24 @@ std::shared_ptr<viewer::PangolinViewer> PLYPlayer::initialize_viewer(const PLYPl
     
     auto viewer = std::make_shared<viewer::PangolinViewer>();
     if (viewer->initialize(config.viewer_width, config.viewer_height)) {
-        spdlog::info("[PLYPlayer] Viewer initialized successfully");
+        LOG_INFO("[PLYPlayer] Viewer initialized successfully");
         
         // Wait for viewer to be ready
         while (!viewer->is_ready()) {
             // Render runs in thread, no need for explicit call
             std::this_thread::sleep_for(std::chrono::milliseconds(16));
         }
-        spdlog::info("[PLYPlayer] Viewer is ready!");
+        LOG_INFO("[PLYPlayer] Viewer is ready!");
         return viewer;
     } else {
-        spdlog::warn("[PLYPlayer] Failed to initialize viewer");
+        LOG_WARN("[PLYPlayer] Failed to initialize viewer");
         return nullptr;
     }
 }
 
 void PLYPlayer::initialize_estimator(const util::SystemConfig& config) {
     m_estimator = std::make_shared<processing::Estimator>(config);
-    spdlog::info("[PLYPlayer] Initialized LiDAR odometry estimator");
+    LOG_INFO("[PLYPlayer] Initialized LiDAR odometry estimator");
 }
 
 double PLYPlayer::process_single_frame(std::shared_ptr<lidar_odometry::util::PointCloud> point_cloud,
@@ -510,7 +510,7 @@ double PLYPlayer::process_single_frame(std::shared_ptr<lidar_odometry::util::Poi
         }
         
     } catch (const std::exception& e) {
-        spdlog::error("[PLYPlayer] Error processing frame {}: {}", context.frame_index, e.what());
+        LOG_ERROR("[PLYPlayer] Error processing frame {}: {}", context.frame_index, e.what());
     }
     
     auto end_time = std::chrono::high_resolution_clock::now();
@@ -530,7 +530,7 @@ void PLYPlayer::update_viewer(viewer::PangolinViewer& viewer,
         // Add frame to trajectory for dynamic pose updates
         viewer.add_trajectory_frame(context.current_lidar_frame);
     } else {
-        spdlog::warn("[PLYPlayer] No processed LidarFrame available in context");
+        LOG_WARN("[PLYPlayer] No processed LidarFrame available in context");
         // Fallback: create new frame with estimated pose
         Eigen::Matrix4f current_pose = context.estimated_poses.back();
         auto lidar_frame = std::make_shared<database::LidarFrame>(context.frame_index, context.timestamp, point_cloud);
@@ -555,7 +555,7 @@ void PLYPlayer::update_viewer(viewer::PangolinViewer& viewer,
                 auto keyframe = m_estimator->get_keyframe(i);
                 if (keyframe) {
                     viewer.add_keyframe(keyframe);
-                    spdlog::debug("[PLYPlayer] Added keyframe {} to viewer", keyframe->get_frame_id());
+                    LOG_DEBUG("[PLYPlayer] Added keyframe {} to viewer", keyframe->get_frame_id());
                 }
             }
             m_last_keyframe_count = current_keyframe_count;
@@ -583,7 +583,7 @@ void PLYPlayer::update_viewer(viewer::PangolinViewer& viewer,
 bool PLYPlayer::handle_viewer_controls(viewer::PangolinViewer& viewer, PLYFrameContext& context) {
     // Check for exit conditions
     if (viewer.should_close()) {
-        spdlog::info("[PLYPlayer] User requested exit");
+        LOG_INFO("[PLYPlayer] User requested exit");
         return false;
     }
     
@@ -603,7 +603,7 @@ void PLYPlayer::save_trajectory_kitti_format(const PLYFrameContext& context,
                                             const std::string& output_path) {
     std::ofstream file(output_path);
     if (!file.is_open()) {
-        spdlog::error("[PLYPlayer] Failed to open trajectory file for writing: {}", output_path);
+        LOG_ERROR("[PLYPlayer] Failed to open trajectory file for writing: {}", output_path);
         return;
     }
     
@@ -618,7 +618,7 @@ void PLYPlayer::save_trajectory_tum_format(const PLYFrameContext& context,
                                           const std::string& output_path) {
     std::ofstream file(output_path);
     if (!file.is_open()) {
-        spdlog::error("[PLYPlayer] Failed to open trajectory file for writing: {}", output_path);
+        LOG_ERROR("[PLYPlayer] Failed to open trajectory file for writing: {}", output_path);
         return;
     }
     
@@ -635,7 +635,7 @@ std::vector<std::string> PLYPlayer::get_ply_files(const std::string& directory_p
     
     try {
         if (!std::filesystem::exists(directory_path)) {
-            spdlog::error("[PLYPlayer] Directory does not exist: {}", directory_path);
+            LOG_ERROR("[PLYPlayer] Directory does not exist: {}", directory_path);
             return ply_files;
         }
         
@@ -652,7 +652,7 @@ std::vector<std::string> PLYPlayer::get_ply_files(const std::string& directory_p
         std::sort(ply_files.begin(), ply_files.end());
         
     } catch (const std::exception& e) {
-        spdlog::error("[PLYPlayer] Error reading directory {}: {}", directory_path, e.what());
+        LOG_ERROR("[PLYPlayer] Error reading directory {}: {}", directory_path, e.what());
     }
     
     return ply_files;

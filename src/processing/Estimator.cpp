@@ -11,7 +11,7 @@
 
 #include "Estimator.h"
 #include "../util/MathUtils.h"
-#include <spdlog/spdlog.h>
+#include "util/LogUtils.h"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -74,9 +74,9 @@ Estimator::Estimator(const util::SystemConfig& config)
     m_voxel_filter = std::make_unique<util::VoxelGrid>();
     m_voxel_filter->setLeafSize(config.voxel_size);
     
-    spdlog::info("[Estimator] Using FastVoxelGrid with stride={}, voxel_size={}", 
+    LOG_INFO("[Estimator] Using FastVoxelGrid with stride={}, voxel_size={}", 
                  config.point_stride, config.voxel_size);
-    spdlog::info("[Estimator] Using VoxelMap for incremental map with voxel_size={}", config.map_voxel_size);
+    LOG_INFO("[Estimator] Using VoxelMap for incremental map with voxel_size={}", config.map_voxel_size);
     
     // Initialize loop closure detector
     LoopClosureConfig loop_config;
@@ -108,7 +108,7 @@ bool Estimator::process_frame(std::shared_ptr<database::LidarFrame> current_fram
     TimingStats timing;
 
     if (!current_frame || !current_frame->get_raw_cloud()) {
-        spdlog::warn("[Estimator] Invalid frame or point cloud");
+        LOG_WARN("[Estimator] Invalid frame or point cloud");
         return false;
     }
     
@@ -118,7 +118,7 @@ bool Estimator::process_frame(std::shared_ptr<database::LidarFrame> current_fram
     // Step 1: Preprocess frame (downsample + feature extraction)
     auto preprocess_start = std::chrono::high_resolution_clock::now();
     if (!preprocess_frame(current_frame)) {
-        spdlog::error("[Estimator] Frame preprocessing failed");
+        LOG_ERROR("[Estimator] Frame preprocessing failed");
         return false;
     }
     auto preprocess_end = std::chrono::high_resolution_clock::now();
@@ -134,7 +134,7 @@ bool Estimator::process_frame(std::shared_ptr<database::LidarFrame> current_fram
 
     // Step 3: Use last keyframe for optimization
     if (!m_last_keyframe) {
-        spdlog::warn("[Estimator] No keyframe available, using velocity model only");
+        LOG_WARN("[Estimator] No keyframe available, using velocity model only");
         return true;
     }
     
@@ -216,7 +216,7 @@ bool Estimator::process_frame(std::shared_ptr<database::LidarFrame> current_fram
         print_timing_statistics();
     }
     
-    spdlog::debug("[Estimator] Frame {} processed in {:.1f}ms (Preprocess: {:.1f}ms, ICP: {:.1f}ms, MapUpdate: {:.1f}ms)", 
+    LOG_DEBUG("[Estimator] Frame {} processed in {:.1f}ms (Preprocess: {:.1f}ms, ICP: {:.1f}ms, MapUpdate: {:.1f}ms)", 
                  m_frame_count, timing.total_ms, timing.preprocessing_ms, timing.icp_ms, timing.map_update_ms);
     
     return true;
@@ -236,7 +236,7 @@ void Estimator::initialize_first_frame(std::shared_ptr<database::LidarFrame> fra
     // Get feature cloud from preprocessed frame
     auto feature_cloud = frame->get_feature_cloud();
     if (!feature_cloud || feature_cloud->empty()) {
-        spdlog::error("[Estimator] No feature cloud in first frame");
+        LOG_ERROR("[Estimator] No feature cloud in first frame");
         m_initialized = true;
         return;
     }
@@ -262,7 +262,7 @@ SE3f Estimator::estimate_motion_dual_frame(std::shared_ptr<database::LidarFrame>
                                           std::shared_ptr<database::LidarFrame> keyframe,
                                           const SE3f& initial_guess) {
     if (!current_frame || !keyframe) {
-        spdlog::warn("[Estimator] Invalid frames for dual frame optimization");
+        LOG_WARN("[Estimator] Invalid frames for dual frame optimization");
         return initial_guess;
     }
     
@@ -270,7 +270,7 @@ SE3f Estimator::estimate_motion_dual_frame(std::shared_ptr<database::LidarFrame>
     auto keyframe_local_map = keyframe->get_local_map();
     
     if (!current_features || !keyframe_local_map || current_features->empty() || keyframe_local_map->empty()) {
-        spdlog::warn("[Estimator] Invalid feature clouds for dual frame optimization");
+        LOG_WARN("[Estimator] Invalid feature clouds for dual frame optimization");
         return initial_guess;
     }
     
@@ -279,7 +279,7 @@ SE3f Estimator::estimate_motion_dual_frame(std::shared_ptr<database::LidarFrame>
     SE3f optimized_transform_sophus;
 
     // Debug log for initial guess (only in debug mode)
-    spdlog::debug("Check Initial Guess: Translation ({:.3f}, {:.3f}, {:.3f}), Rotation ({:.3f}, {:.3f}, {:.3f})",
+    LOG_DEBUG("Check Initial Guess: Translation ({:.3f}, {:.3f}, {:.3f}), Rotation ({:.3f}, {:.3f}, {:.3f})",
                  initial_guess.Translation().x(), initial_guess.Translation().y(), initial_guess.Translation().z(),
                  initial_guess.Rotation().Log().x(), initial_guess.Rotation().Log().y(), initial_guess.Rotation().Log().z());
     
@@ -292,7 +292,7 @@ SE3f Estimator::estimate_motion_dual_frame(std::shared_ptr<database::LidarFrame>
     );
     
     if (!success) {
-        spdlog::warn("[Estimator] Dual frame optimization failed, using initial guess");
+        LOG_WARN("[Estimator] Dual frame optimization failed, using initial guess");
         return initial_guess;
     }
     
@@ -304,7 +304,7 @@ SE3f Estimator::estimate_motion_dual_frame(std::shared_ptr<database::LidarFrame>
     m_total_optimization_time_ms += 1.0;   // TODO: Get actual time from optimization::IterativeClosestPointOptimizer
     m_optimization_call_count++;
     
-    spdlog::debug("[Estimator] Dual frame optimization completed successfully");
+    LOG_DEBUG("[Estimator] Dual frame optimization completed successfully");
     
     return T_keyframe_current;
 }
@@ -328,9 +328,9 @@ std::shared_ptr<database::LidarFrame> Estimator::select_best_keyframe(const SE3f
     if (best_keyframe) {
         Vector3f translation_diff = current_pose.Translation() - best_keyframe->get_pose().Translation();
         double distance = translation_diff.norm();
-        spdlog::debug("[Estimator] Selected most recent keyframe at distance {:.2f}m", distance);
+        LOG_DEBUG("[Estimator] Selected most recent keyframe at distance {:.2f}m", distance);
     } else {
-        spdlog::debug("[Estimator] No suitable keyframe found");
+        LOG_DEBUG("[Estimator] No suitable keyframe found");
     }
     
     return best_keyframe;
@@ -350,7 +350,7 @@ bool Estimator::should_create_keyframe(const SE3f& current_pose) {
     double rotation_angle = rotation_diff.Log().norm();
 
     // Debug log for keyframe check
-    spdlog::debug("[Estimator] Keyframe check: Δt={:.2f}m, Δr={:.2f}° (thresholds: {:.2f}m, {:.2f}°)", 
+    LOG_DEBUG("[Estimator] Keyframe check: Δt={:.2f}m, Δr={:.2f}° (thresholds: {:.2f}m, {:.2f}°)", 
                   distance, rotation_angle * 180.0 / M_PI,
                   m_config.keyframe_distance_threshold, m_config.keyframe_rotation_threshold);
     
@@ -381,7 +381,7 @@ void Estimator::create_keyframe(std::shared_ptr<database::LidarFrame> frame)
         
         frame->set_relative_pose(relative_pose);
         
-        spdlog::debug("[Estimator] Set relative pose for keyframe {}: t_norm={:.3f}, r_norm={:.3f}°", 
+        LOG_DEBUG("[Estimator] Set relative pose for keyframe {}: t_norm={:.3f}, r_norm={:.3f}°", 
                      frame->get_keyframe_id(), 
                      relative_pose.Translation().norm(),
                      relative_pose.Rotation().Log().norm() * 180.0f / M_PI);
@@ -400,7 +400,7 @@ void Estimator::create_keyframe(std::shared_ptr<database::LidarFrame> frame)
     } else {
         // First keyframe: set identity relative pose
         frame->set_relative_pose(SE3f());
-        spdlog::debug("[Estimator] First keyframe: set identity relative pose");
+        LOG_DEBUG("[Estimator] First keyframe: set identity relative pose");
         
         // Incremental PGO: add first keyframe with prior
         if (m_config.pgo_enable_pgo) {
@@ -422,7 +422,7 @@ void Estimator::create_keyframe(std::shared_ptr<database::LidarFrame> frame)
     // Check if frame has global feature cloud
     auto global_feature_cloud = frame->get_feature_cloud_global();
     if (!global_feature_cloud) {
-        spdlog::warn("[Estimator] Frame has no global feature cloud, using local feature cloud");
+        LOG_WARN("[Estimator] Frame has no global feature cloud, using local feature cloud");
         // For first frame, transform local features to global (identity transform)
         auto local_feature_cloud = frame->get_feature_cloud();
         if (local_feature_cloud && !local_feature_cloud->empty()) {
@@ -431,7 +431,7 @@ void Estimator::create_keyframe(std::shared_ptr<database::LidarFrame> frame)
             frame->set_feature_cloud_global(global_cloud);
             global_feature_cloud = global_cloud;
         } else {
-            spdlog::error("[Estimator] Frame has no feature clouds at all!");
+            LOG_ERROR("[Estimator] Frame has no feature clouds at all!");
             return;
         }
     }
@@ -467,7 +467,7 @@ void Estimator::create_keyframe(std::shared_ptr<database::LidarFrame> frame)
         for (const auto& kf : m_keyframes) {
             if (kf->get_keyframe_id() == kf_to_clear) {
                 kf->clear_heavy_data_for_old_keyframe();
-                spdlog::debug("[Estimator] Cleared heavy data for keyframe {} (outside window [{}, {}])", 
+                LOG_DEBUG("[Estimator] Cleared heavy data for keyframe {} (outside window [{}, {}])", 
                              kf_to_clear, oldest_to_keep, current_kf_id);
                 break;
             }
@@ -491,12 +491,12 @@ void Estimator::create_keyframe(std::shared_ptr<database::LidarFrame> frame)
             {
                 std::lock_guard<std::mutex> lock(m_query_mutex);
                 m_loop_query_queue.push_back(current_keyframe_id);
-                spdlog::debug("[Estimator] Added KF {} to loop query queue (queue size: {})", 
+                LOG_DEBUG("[Estimator] Added KF {} to loop query queue (queue size: {})", 
                              current_keyframe_id, m_loop_query_queue.size());
             }
             m_query_cv.notify_one();
         } else {
-            spdlog::debug("[Estimator] Loop detection skipped: only {} keyframes since last loop (need {})",
+            LOG_DEBUG("[Estimator] Loop detection skipped: only {} keyframes since last loop (need {})",
                          keyframes_since_last_loop, m_config.loop_min_keyframe_gap);
         }
     }
@@ -546,7 +546,7 @@ void Estimator::get_debug_clouds(PointCloudConstPtr& pre_icp_cloud, PointCloudCo
 bool Estimator::preprocess_frame(std::shared_ptr<database::LidarFrame> frame) {
     auto raw_cloud = frame->get_raw_cloud();
     if (!raw_cloud || raw_cloud->empty()) {
-        spdlog::error("[Estimator] Invalid raw cloud");
+        LOG_ERROR("[Estimator] Invalid raw cloud");
         return false;
     }
     
@@ -555,7 +555,7 @@ bool Estimator::preprocess_frame(std::shared_ptr<database::LidarFrame> frame) {
     m_fast_voxel_grid->filter(*raw_cloud, *downsampled_cloud, m_config.point_stride);
     
     if (downsampled_cloud->empty()) {
-        spdlog::error("[Estimator] Downsampled cloud is empty");
+        LOG_ERROR("[Estimator] Downsampled cloud is empty");
         return false;
     }
     
@@ -566,7 +566,7 @@ bool Estimator::preprocess_frame(std::shared_ptr<database::LidarFrame> frame) {
     frame->set_processed_cloud(downsampled_cloud);
     frame->set_feature_cloud(downsampled_cloud);  // Use same cloud as features
     
-    spdlog::debug("[Estimator] Preprocessing: {} -> {} points (stride={}, voxels={})", 
+    LOG_DEBUG("[Estimator] Preprocessing: {} -> {} points (stride={}, voxels={})", 
                   raw_cloud->size(), downsampled_cloud->size(), 
                   m_config.point_stride, m_fast_voxel_grid->getVoxelCount());
     
@@ -603,7 +603,7 @@ void Estimator::enable_loop_closure(bool enable) {
         LoopClosureConfig config = m_loop_detector->get_config();
         config.enable_loop_detection = enable;
         m_loop_detector->update_config(config);
-        spdlog::info("[Estimator] Loop closure detection {}", enable ? "enabled" : "disabled");
+        LOG_INFO("[Estimator] Loop closure detection {}", enable ? "enabled" : "disabled");
     }
 }
 
@@ -637,7 +637,7 @@ void Estimator::process_loop_closures(std::shared_ptr<database::LidarFrame> curr
     // Use only the best candidate (first one, already sorted by similarity score)
     const auto& candidate = loop_candidates[0];
     
-    spdlog::info("[Estimator] Processing best loop closure candidate for ICP optimization");
+    LOG_INFO("[Estimator] Processing best loop closure candidate for ICP optimization");
     
     // Find the matched keyframe in our database
     std::shared_ptr<database::LidarFrame> matched_keyframe = nullptr;
@@ -650,7 +650,7 @@ void Estimator::process_loop_closures(std::shared_ptr<database::LidarFrame> curr
     }
     
     if (!matched_keyframe) {
-        spdlog::warn("[Estimator] Could not find matched keyframe {} in database", candidate.match_keyframe_id);
+        LOG_WARN("[Estimator] Could not find matched keyframe {} in database", candidate.match_keyframe_id);
         return;
     }
 
@@ -660,7 +660,7 @@ void Estimator::process_loop_closures(std::shared_ptr<database::LidarFrame> curr
 
     if (!local_feature_matched || !local_feature_current ||
         local_feature_matched->empty() || local_feature_current->empty()) {
-        spdlog::warn("[Estimator] Empty feature clouds for loop {} <-> {}", 
+        LOG_WARN("[Estimator] Empty feature clouds for loop {} <-> {}", 
                     candidate.query_keyframe_id, candidate.match_keyframe_id);
         return;
     }
@@ -676,7 +676,7 @@ void Estimator::process_loop_closures(std::shared_ptr<database::LidarFrame> curr
     );
 
     if (!icp_success) {
-        spdlog::warn("[Estimator] Loop closure ICP failed for {} <-> {}", 
+        LOG_WARN("[Estimator] Loop closure ICP failed for {} <-> {}", 
                     candidate.query_keyframe_id, candidate.match_keyframe_id);
         return;
     }
@@ -684,7 +684,7 @@ void Estimator::process_loop_closures(std::shared_ptr<database::LidarFrame> curr
     // Validate loop closure using inlier ratio
     const float min_inlier_ratio = 0.3f;  // Minimum 30% inliers required
     if (inlier_ratio < min_inlier_ratio) {
-        spdlog::warn("[Estimator] Loop closure rejected: inlier ratio {:.2f}% < {:.2f}% for {} <-> {}", 
+        LOG_WARN("[Estimator] Loop closure rejected: inlier ratio {:.2f}% < {:.2f}% for {} <-> {}", 
                     inlier_ratio * 100.0f, min_inlier_ratio * 100.0f,
                     candidate.query_keyframe_id, candidate.match_keyframe_id);
         return;
@@ -707,7 +707,7 @@ void Estimator::process_loop_closures(std::shared_ptr<database::LidarFrame> curr
     float translation_diff = pose_diff.Translation().norm();
     float rotation_diff = pose_diff.Rotation().Log().norm() * 180.0f / M_PI;
     
-    spdlog::info("[Estimator] Loop closure ICP success {} <-> {}: Δt={:.3f}m, Δr={:.2f}°, inliers={:.1f}%",
+    LOG_INFO("[Estimator] Loop closure ICP success {} <-> {}: Δt={:.3f}m, Δr={:.2f}°, inliers={:.1f}%",
                 candidate.query_keyframe_id, candidate.match_keyframe_id,
                 translation_diff, rotation_diff, inlier_ratio * 100.0f);
     
@@ -717,12 +717,12 @@ void Estimator::process_loop_closures(std::shared_ptr<database::LidarFrame> curr
     
     // Check if PGO is enabled
     if (!m_config.pgo_enable_pgo) {
-        spdlog::info("[Estimator] PGO disabled, skipping pose graph optimization");
+        LOG_INFO("[Estimator] PGO disabled, skipping pose graph optimization");
         return;
     }
     
     // ========== Incremental ISAM2-based PGO (LIO-SAM pattern) ==========
-    spdlog::info("[PGO-ISAM2] Adding loop closure and optimizing incrementally");
+    LOG_INFO("[PGO-ISAM2] Adding loop closure and optimizing incrementally");
     
     // Store pre-PGO poses for visualization (before optimization)
     std::map<int, SE3f> pre_pgo_poses;
@@ -739,7 +739,7 @@ void Estimator::process_loop_closures(std::shared_ptr<database::LidarFrame> curr
     loop_constraint.rotation_noise = m_config.pgo_loop_rotation_noise;
     m_loop_constraints.push_back(loop_constraint);
     
-    spdlog::info("[PGO-ISAM2] Loop closure: {} -> {} (total loops: {})",
+    LOG_INFO("[PGO-ISAM2] Loop closure: {} -> {} (total loops: {})",
                 matched_keyframe->get_keyframe_id(), 
                 current_keyframe->get_keyframe_id(),
                 m_loop_constraints.size());
@@ -757,8 +757,8 @@ void Estimator::process_loop_closures(std::shared_ptr<database::LidarFrame> curr
         // Get optimized poses
         auto optimized_poses = m_pose_graph_optimizer->get_all_optimized_poses();
         
-        spdlog::info("[PGO-ISAM2] ========== PGO Results ==========");
-        spdlog::info("[PGO-ISAM2] Total keyframes optimized: {}", optimized_poses.size());
+        LOG_INFO("[PGO-ISAM2] ========== PGO Results ==========");
+        LOG_INFO("[PGO-ISAM2] Total keyframes optimized: {}", optimized_poses.size());
         
         float max_translation_diff = 0.0f;
         float max_rotation_diff = 0.0f;
@@ -789,25 +789,25 @@ void Estimator::process_loop_closures(std::shared_ptr<database::LidarFrame> curr
             avg_translation_diff /= count;
             avg_rotation_diff /= count;
             
-            spdlog::info("[PGO-ISAM2] Average correction: Δt={:.3f}m, Δr={:.2f}°", avg_translation_diff, avg_rotation_diff);
-            spdlog::info("[PGO-ISAM2] Maximum correction: Δt={:.3f}m, Δr={:.2f}°", max_translation_diff, max_rotation_diff);
+            LOG_INFO("[PGO-ISAM2] Average correction: Δt={:.3f}m, Δr={:.2f}°", avg_translation_diff, avg_rotation_diff);
+            LOG_INFO("[PGO-ISAM2] Maximum correction: Δt={:.3f}m, Δr={:.2f}°", max_translation_diff, max_rotation_diff);
         }
         
-        spdlog::info("[PGO-ISAM2] =========================================");
+        LOG_INFO("[PGO-ISAM2] =========================================");
         
         // Store optimized poses for visualization
         m_optimized_poses = optimized_poses;
         
         // Apply pose graph optimization results to all keyframes
-        spdlog::info("[PGO-ISAM2] Applying corrections to all keyframes...");
+        LOG_INFO("[PGO-ISAM2] Applying corrections to all keyframes...");
         apply_pose_graph_optimization();
         
         // Update cooldown
         m_last_successful_loop_keyframe_id = current_keyframe->get_keyframe_id();
-        spdlog::info("[PGO-ISAM2] Loop closure cooldown activated: next detection after keyframe {}",
+        LOG_INFO("[PGO-ISAM2] Loop closure cooldown activated: next detection after keyframe {}",
                     m_last_successful_loop_keyframe_id + m_config.loop_min_keyframe_gap);
     } else {
-        spdlog::error("[PGO-ISAM2] Pose graph optimization failed!");
+        LOG_ERROR("[PGO-ISAM2] Pose graph optimization failed!");
     }
 }
 
@@ -816,11 +816,11 @@ void Estimator::apply_pose_graph_optimization() {
     auto optimized_poses = m_pose_graph_optimizer->get_all_optimized_poses();
     
     if (optimized_poses.empty()) {
-        spdlog::warn("[Estimator] No optimized poses available from pose graph!");
+        LOG_WARN("[Estimator] No optimized poses available from pose graph!");
         return;
     }
     
-    spdlog::info("[Estimator] Applying PGO results to {} keyframes", optimized_poses.size());
+    LOG_INFO("[Estimator] Applying PGO results to {} keyframes", optimized_poses.size());
 
     auto last_keyframe = m_keyframes.back();
 
@@ -837,7 +837,7 @@ void Estimator::apply_pose_graph_optimization() {
         
         auto it = optimized_poses.find(kf_id);
         if (it == optimized_poses.end()) {
-            spdlog::warn("[Estimator] No optimized pose for keyframe {}", kf_id);
+            LOG_WARN("[Estimator] No optimized pose for keyframe {}", kf_id);
             continue;
         }
         
@@ -847,7 +847,7 @@ void Estimator::apply_pose_graph_optimization() {
         float translation_diff = (new_pose.Translation() - old_pose.Translation()).norm();
         float rotation_diff = (new_pose.Rotation().Log() - old_pose.Rotation().Log()).norm() * 180.0f / M_PI;
         
-        spdlog::debug("[Estimator] Keyframe {}: Δt={:.3f}m, Δr={:.2f}°", 
+        LOG_DEBUG("[Estimator] Keyframe {}: Δt={:.3f}m, Δr={:.2f}°", 
                      kf_id, translation_diff, rotation_diff);
         
         // Update keyframe pose (absolute pose)
@@ -863,7 +863,7 @@ void Estimator::apply_pose_graph_optimization() {
     auto voxelmap_correction_end = std::chrono::high_resolution_clock::now();
     double voxelmap_correction_ms = std::chrono::duration<double, std::milli>(voxelmap_correction_end - voxelmap_correction_start).count();
     
-    spdlog::info("[Estimator] VoxelMap correction applied in {:.2f}ms (L0={} L1={} voxels)", 
+    LOG_INFO("[Estimator] VoxelMap correction applied in {:.2f}ms (L0={} L1={} voxels)", 
                  voxelmap_correction_ms, m_voxel_map->GetVoxelCount(), m_voxel_map->GetL1VoxelCount());
 
     // Update last keyframe's local map from VoxelMap (for visualization only)
@@ -888,14 +888,14 @@ void Estimator::loop_pgo_thread_function() {
             
             // If PGO is in progress, skip processing (wait for next wake-up)
             if (m_pgo_in_progress) {
-                spdlog::debug("[Background] PGO in progress, skipping queries");
+                LOG_DEBUG("[Background] PGO in progress, skipping queries");
                 continue;
             }
             
             // Get most recent query and clear the rest (for real-time performance)
             query_kf_id = m_loop_query_queue.back();
             m_loop_query_queue.clear();
-            spdlog::debug("[Background] Processing loop query for KF {}", query_kf_id);
+            LOG_DEBUG("[Background] Processing loop query for KF {}", query_kf_id);
         }
         
         // Find the keyframe (read-only access with lock)
@@ -910,7 +910,7 @@ void Estimator::loop_pgo_thread_function() {
         }
         
         if (!query_keyframe) {
-            spdlog::warn("[Background] Keyframe {} not found", query_kf_id);
+            LOG_WARN("[Background] Keyframe {} not found", query_kf_id);
             continue;
         }
         
@@ -918,7 +918,7 @@ void Estimator::loop_pgo_thread_function() {
         auto loop_candidates = m_loop_detector->detect_loop_closures(query_keyframe);
         
         if (loop_candidates.empty()) {
-            spdlog::debug("[Background] No loop candidates found for KF {}", query_kf_id);
+            LOG_DEBUG("[Background] No loop candidates found for KF {}", query_kf_id);
             continue;
         }
         
@@ -962,7 +962,7 @@ bool Estimator::run_pgo_for_loop(
 
     if (!matched_keyframe)
     {
-        spdlog::warn("[Background] Could not find matched keyframe {}",
+        LOG_WARN("[Background] Could not find matched keyframe {}",
                      candidate.match_keyframe_id);
         return false;
     }
@@ -974,7 +974,7 @@ bool Estimator::run_pgo_for_loop(
     if (!local_feature_matched || !local_feature_current ||
         local_feature_matched->empty() || local_feature_current->empty())
     {
-        spdlog::warn("[Background] Empty feature clouds for loop {} <-> {}",
+        LOG_WARN("[Background] Empty feature clouds for loop {} <-> {}",
                      candidate.query_keyframe_id, candidate.match_keyframe_id);
         return false;
     }
@@ -991,7 +991,7 @@ bool Estimator::run_pgo_for_loop(
     );
 
     if (!icp_success) {
-        spdlog::warn("[Background] Loop ICP failed {} <-> {}", 
+        LOG_WARN("[Background] Loop ICP failed {} <-> {}", 
                     candidate.query_keyframe_id, candidate.match_keyframe_id);
         return false;
     }
@@ -999,7 +999,7 @@ bool Estimator::run_pgo_for_loop(
     // Validate loop closure using inlier ratio
     const float min_inlier_ratio = 0.3f;
     if (inlier_ratio < min_inlier_ratio) {
-        spdlog::warn("[Background] Loop rejected: {:.1f}% inliers < {:.1f}%", 
+        LOG_WARN("[Background] Loop rejected: {:.1f}% inliers < {:.1f}%", 
                     inlier_ratio * 100.0f, min_inlier_ratio * 100.0f);
         return false;
     }
@@ -1016,7 +1016,7 @@ bool Estimator::run_pgo_for_loop(
     float translation_diff = pose_diff.Translation().norm();
     float rotation_diff = pose_diff.Rotation().Log().norm() * 180.0f / M_PI;
     
-    spdlog::debug("[Background] Loop detected {} <-> {}: Δt={:.2f}m, Δr={:.2f}°, {:.1f}% inliers",
+    LOG_DEBUG("[Background] Loop detected {} <-> {}: Δt={:.2f}m, Δr={:.2f}°, {:.1f}% inliers",
                 candidate.query_keyframe_id, candidate.match_keyframe_id,
                 translation_diff, rotation_diff, inlier_ratio * 100.0f);
     
@@ -1025,7 +1025,7 @@ bool Estimator::run_pgo_for_loop(
     
     // Check if PGO is enabled
     if (!m_config.pgo_enable_pgo) {
-        spdlog::debug("[Background] PGO disabled");
+        LOG_DEBUG("[Background] PGO disabled");
         return false;
     }
     
@@ -1063,7 +1063,7 @@ bool Estimator::run_pgo_for_loop(
     );
     
     if (!opt_success) {
-        spdlog::error("[Background] PGO failed!");
+        LOG_ERROR("[Background] PGO failed!");
         return false;
     }
     
@@ -1096,7 +1096,7 @@ bool Estimator::run_pgo_for_loop(
         avg_rot_diff /= kf_ids.size();
     }
     
-    spdlog::debug("[Background] PGO completed: {} KFs, avg Δ({:.3f}m, {:.2f}°), max Δ({:.3f}m, {:.2f}°)",
+    LOG_DEBUG("[Background] PGO completed: {} KFs, avg Δ({:.3f}m, {:.2f}°), max Δ({:.3f}m, {:.2f}°)",
                  kf_ids.size(), avg_trans_diff, avg_rot_diff, max_trans_diff, max_rot_diff);
     
     // Calculate correction transform for last keyframe
@@ -1137,7 +1137,7 @@ void Estimator::apply_pending_pgo_result_if_available() {
     // Apply PGO result
     int last_optimized_id = result->last_optimized_kf_id;
     
-    spdlog::debug("[Main] Applying PGO result ({} keyframes optimized)", 
+    LOG_DEBUG("[Main] Applying PGO result ({} keyframes optimized)", 
                  result->optimized_poses.size());
     
     // Step 1: Update poses for keyframes included in PGO
@@ -1204,7 +1204,7 @@ void Estimator::propagate_poses_after_pgo(int last_optimized_kf_id) {
     }
     
     if (!found_start) {
-        spdlog::warn("[Main] Could not find last optimized KF {} for propagation", 
+        LOG_WARN("[Main] Could not find last optimized KF {} for propagation", 
                      last_optimized_kf_id);
     }
 }
@@ -1219,7 +1219,7 @@ void Estimator::transform_current_keyframe_map(const SE3f& correction) {
     auto local_map = current_kf->get_local_map();
     
     if (!local_map || local_map->empty()) {
-        spdlog::debug("[Main] Current keyframe has no local map to transform");
+        LOG_DEBUG("[Main] Current keyframe has no local map to transform");
         return;
     }
     
@@ -1234,11 +1234,11 @@ bool Estimator::save_map_to_ply(const std::string& output_path, float voxel_size
     std::lock_guard<std::mutex> lock(m_keyframes_mutex);
     
     if (m_keyframes.empty()) {
-        spdlog::warn("[Estimator] No keyframes to save");
+        LOG_WARN("[Estimator] No keyframes to save");
         return false;
     }
     
-    spdlog::info("[Estimator] Building final map from {} keyframes...", m_keyframes.size());
+    LOG_INFO("[Estimator] Building final map from {} keyframes...", m_keyframes.size());
     
     // Accumulate all keyframe feature clouds in world coordinates
     util::PointCloudPtr accumulated_map = std::make_shared<util::PointCloud>();
@@ -1259,11 +1259,11 @@ bool Estimator::save_map_to_ply(const std::string& output_path, float voxel_size
     }
     
     if (accumulated_map->empty()) {
-        spdlog::error("[Estimator] No points in accumulated map");
+        LOG_ERROR("[Estimator] No points in accumulated map");
         return false;
     }
     
-    spdlog::info("[Estimator] Accumulated map: {} points", accumulated_map->size());
+    LOG_INFO("[Estimator] Accumulated map: {} points", accumulated_map->size());
     
     // Downsample if voxel_size > 0
     util::PointCloudPtr final_map = accumulated_map;
@@ -1275,17 +1275,17 @@ bool Estimator::save_map_to_ply(const std::string& output_path, float voxel_size
         final_map = std::make_shared<util::PointCloud>();
         voxel_filter.filter(*final_map);
         
-        spdlog::info("[Estimator] Downsampled map: {} -> {} points (voxel_size={})", 
+        LOG_INFO("[Estimator] Downsampled map: {} -> {} points (voxel_size={})", 
                      accumulated_map->size(), final_map->size(), voxel_size);
     }
     
     // Save as PLY binary format
     if (!util::save_point_cloud_ply(output_path, final_map)) {
-        spdlog::error("[Estimator] Failed to save map to {}", output_path);
+        LOG_ERROR("[Estimator] Failed to save map to {}", output_path);
         return false;
     }
     
-    spdlog::info("[Estimator] Saved final map to {} ({} points)", output_path, final_map->size());
+    LOG_INFO("[Estimator] Saved final map to {} ({} points)", output_path, final_map->size());
     return true;
 }
 
@@ -1326,17 +1326,17 @@ void Estimator::print_timing_statistics() const {
     double avg_map = sum_map / count;
     double avg_total = sum_total / count;
     
-    spdlog::info("============================================================");
-    spdlog::info("[Timing Stats] Frame {} (last {} frames)", m_frame_count, count);
-    spdlog::info("------------------------------------------------------------");
-    spdlog::info("              |   Avg (ms)  |   Min (ms)  |   Max (ms)  ");
-    spdlog::info("------------------------------------------------------------");
-    spdlog::info(" Preprocess   | {:>10.2f}  | {:>10.2f}  | {:>10.2f}  ", avg_preprocess, min_preprocess, max_preprocess);
-    spdlog::info(" ICP          | {:>10.2f}  | {:>10.2f}  | {:>10.2f}  ", avg_icp, min_icp, max_icp);
-    spdlog::info(" Map Update   | {:>10.2f}  | {:>10.2f}  | {:>10.2f}  ", avg_map, min_map, max_map);
-    spdlog::info("------------------------------------------------------------");
-    spdlog::info(" Total        | {:>10.2f}  | {:>10.2f}  | {:>10.2f}  ", avg_total, min_total, max_total);
-    spdlog::info("============================================================");
+    LOG_INFO("============================================================");
+    LOG_INFO("[Timing Stats] Frame {} (last {} frames)", m_frame_count, count);
+    LOG_INFO("------------------------------------------------------------");
+    LOG_INFO("              |   Avg (ms)  |   Min (ms)  |   Max (ms)  ");
+    LOG_INFO("------------------------------------------------------------");
+    LOG_INFO(" Preprocess   | {:>10.2f}  | {:>10.2f}  | {:>10.2f}  ", avg_preprocess, min_preprocess, max_preprocess);
+    LOG_INFO(" ICP          | {:>10.2f}  | {:>10.2f}  | {:>10.2f}  ", avg_icp, min_icp, max_icp);
+    LOG_INFO(" Map Update   | {:>10.2f}  | {:>10.2f}  | {:>10.2f}  ", avg_map, min_map, max_map);
+    LOG_INFO("------------------------------------------------------------");
+    LOG_INFO(" Total        | {:>10.2f}  | {:>10.2f}  | {:>10.2f}  ", avg_total, min_total, max_total);
+    LOG_INFO("============================================================");
 }
 
 } // namespace processing

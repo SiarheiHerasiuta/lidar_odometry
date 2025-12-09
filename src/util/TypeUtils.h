@@ -1,5 +1,5 @@
 /**
- * @file      Types.h
+ * @file      TypeUtils.h
  * @brief     Common type definitions for LiDAR odometry system.
  * @author    Seungwon Choi
  * @date      2025-10-03

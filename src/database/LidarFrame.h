@@ -15,7 +15,7 @@
 #include <vector>
 #include <Eigen/Dense>
 #include <Eigen/Geometry>
-#include "../util/Types.h"
+#include "../util/TypeUtils.h"
 
 // Type definitions (declared here as needed)
 namespace lidar_odometry {

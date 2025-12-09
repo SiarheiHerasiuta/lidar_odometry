@@ -15,7 +15,7 @@
  */
 
 #include "PoseGraphOptimizer.h"
-#include <spdlog/spdlog.h>
+#include "util/LogUtils.h"
 #include <chrono>
 
 #include <gtsam/geometry/Pose3.h>
@@ -73,7 +73,7 @@ PoseGraphOptimizer::PoseGraphOptimizer()
     params.relinearizeSkip = 1;
     m_isam2 = std::make_unique<gtsam::ISAM2>(params);
     
-    spdlog::debug("[PGO-ISAM2] Initialized with incremental update pattern");
+    LOG_DEBUG("[PGO-ISAM2] Initialized with incremental update pattern");
 }
 
 PoseGraphOptimizer::~PoseGraphOptimizer() = default;
@@ -82,7 +82,7 @@ bool PoseGraphOptimizer::add_first_keyframe(int keyframe_id, const SE3f& pose) {
     std::lock_guard<std::mutex> lock(m_mutex);
     
     if (!m_keyframe_ids.empty()) {
-        spdlog::warn("[PGO-ISAM2] add_first_keyframe called but graph is not empty");
+        LOG_WARN("[PGO-ISAM2] add_first_keyframe called but graph is not empty");
         return false;
     }
     
@@ -112,11 +112,11 @@ bool PoseGraphOptimizer::add_first_keyframe(int keyframe_id, const SE3f& pose) {
         m_keyframe_set.insert(keyframe_id);
         m_is_initialized = true;
         
-        spdlog::info("[PGO-ISAM2] Added first keyframe {} with prior", keyframe_id);
+        LOG_INFO("[PGO-ISAM2] Added first keyframe {} with prior", keyframe_id);
         return true;
         
     } catch (const std::exception& e) {
-        spdlog::error("[PGO-ISAM2] Failed to add first keyframe: {}", e.what());
+        LOG_ERROR("[PGO-ISAM2] Failed to add first keyframe: {}", e.what());
         m_pending_graph->resize(0);
         m_pending_values->clear();
         return false;
@@ -132,7 +132,7 @@ bool PoseGraphOptimizer::add_keyframe_with_odom(int prev_keyframe_id, int curr_k
     
     // Check if curr keyframe already exists
     if (m_keyframe_set.find(curr_keyframe_id) != m_keyframe_set.end()) {
-        spdlog::debug("[PGO-ISAM2] Keyframe {} already exists in graph", curr_keyframe_id);
+        LOG_DEBUG("[PGO-ISAM2] Keyframe {} already exists in graph", curr_keyframe_id);
         return true;  // Not an error, just skip
     }
     
@@ -161,7 +161,7 @@ bool PoseGraphOptimizer::add_keyframe_with_odom(int prev_keyframe_id, int curr_k
     } else {
         // Previous keyframe not in graph - add with loose prior instead
         // This can happen if there was a gap due to race conditions
-        spdlog::warn("[PGO-ISAM2] Previous keyframe {} not found, adding {} with loose prior", 
+        LOG_WARN("[PGO-ISAM2] Previous keyframe {} not found, adding {} with loose prior", 
                     prev_keyframe_id, curr_keyframe_id);
         
         // Loose prior (allows optimization to adjust)
@@ -195,16 +195,16 @@ bool PoseGraphOptimizer::add_keyframe_with_odom(int prev_keyframe_id, int curr_k
         m_odometry_count++;
         
         if (prev_exists) {
-            spdlog::debug("[PGO-ISAM2] Added keyframe {} with odom from {} ({:.2f}ms)", 
+            LOG_DEBUG("[PGO-ISAM2] Added keyframe {} with odom from {} ({:.2f}ms)", 
                          curr_keyframe_id, prev_keyframe_id, duration_ms);
         } else {
-            spdlog::info("[PGO-ISAM2] Added keyframe {} with loose prior ({:.2f}ms)", 
+            LOG_INFO("[PGO-ISAM2] Added keyframe {} with loose prior ({:.2f}ms)", 
                         curr_keyframe_id, duration_ms);
         }
         return true;
         
     } catch (const std::exception& e) {
-        spdlog::error("[PGO-ISAM2] Failed to add keyframe {}: {}", curr_keyframe_id, e.what());
+        LOG_ERROR("[PGO-ISAM2] Failed to add keyframe {}: {}", curr_keyframe_id, e.what());
         m_pending_graph->resize(0);
         m_pending_values->clear();
         return false;
@@ -219,11 +219,11 @@ bool PoseGraphOptimizer::add_loop_and_optimize(int from_keyframe_id, int to_keyf
     
     // Check if both keyframes exist
     if (m_keyframe_set.find(from_keyframe_id) == m_keyframe_set.end()) {
-        spdlog::error("[PGO-ISAM2] Loop from-keyframe {} not found", from_keyframe_id);
+        LOG_ERROR("[PGO-ISAM2] Loop from-keyframe {} not found", from_keyframe_id);
         return false;
     }
     if (m_keyframe_set.find(to_keyframe_id) == m_keyframe_set.end()) {
-        spdlog::error("[PGO-ISAM2] Loop to-keyframe {} not found", to_keyframe_id);
+        LOG_ERROR("[PGO-ISAM2] Loop to-keyframe {} not found", to_keyframe_id);
         return false;
     }
     
@@ -265,7 +265,7 @@ bool PoseGraphOptimizer::add_loop_and_optimize(int from_keyframe_id, int to_keyf
         return true;
         
     } catch (const std::exception& e) {
-        spdlog::error("[PGO-ISAM2] Loop closure optimization failed: {}", e.what());
+        LOG_ERROR("[PGO-ISAM2] Loop closure optimization failed: {}", e.what());
         m_pending_graph->resize(0);
         m_pending_values->clear();
         return false;
@@ -296,7 +296,7 @@ bool PoseGraphOptimizer::get_optimized_pose(int keyframe_id, SE3f& optimized_pos
         return true;
         
     } catch (const std::exception& e) {
-        spdlog::error("[PGO-ISAM2] Failed to get pose for keyframe {}: {}", keyframe_id, e.what());
+        LOG_ERROR("[PGO-ISAM2] Failed to get pose for keyframe {}: {}", keyframe_id, e.what());
         return false;
     }
 }
@@ -321,7 +321,7 @@ std::map<int, SE3f> PoseGraphOptimizer::get_all_optimized_poses() const {
             }
         }
     } catch (const std::exception& e) {
-        spdlog::error("[PGO-ISAM2] Failed to get all poses: {}", e.what());
+        LOG_ERROR("[PGO-ISAM2] Failed to get all poses: {}", e.what());
     }
     
     return result;
@@ -348,7 +348,7 @@ void PoseGraphOptimizer::clear() {
     m_odometry_count = 0;
     m_is_initialized = false;
     
-    spdlog::debug("[PGO-ISAM2] Cleared pose graph");
+    LOG_DEBUG("[PGO-ISAM2] Cleared pose graph");
 }
 
 } // namespace optimization

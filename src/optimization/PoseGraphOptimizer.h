@@ -11,7 +11,7 @@
 
 #pragma once
 
-#include "../util/Types.h"
+#include "../util/TypeUtils.h"
 #include <memory>
 #include <vector>
 #include <map>

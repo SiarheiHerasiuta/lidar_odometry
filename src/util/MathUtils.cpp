@@ -11,7 +11,7 @@
 
 #include "MathUtils.h"
 #include <cmath>
-#include <spdlog/spdlog.h>
+#include "util/LogUtils.h"
 
 namespace lidar_odometry {
 namespace util {
@@ -37,7 +37,7 @@ Eigen::Matrix3f MathUtils::normalize_rotation_matrix(const Eigen::Matrix3f& R) {
     float orthogonality_error = (R_normalized * R_normalized.transpose() - Eigen::Matrix3f::Identity()).norm();
     
     // if (std::abs(det - 1.0f) > 1e-6f || orthogonality_error > 1e-6f) {
-    //     spdlog::warn("[MathUtils] Rotation normalization may have failed: det={}, orth_error={}", det, orthogonality_error);
+    //     LOG_WARN("[MathUtils] Rotation normalization may have failed: det={}, orth_error={}", det, orthogonality_error);
     // }
     
     return R_normalized;
@@ -64,7 +64,7 @@ Eigen::Matrix3d MathUtils::normalize_rotation_matrix(const Eigen::Matrix3d& R) {
     double orthogonality_error = (R_normalized * R_normalized.transpose() - Eigen::Matrix3d::Identity()).norm();
     
     // if (std::abs(det - 1.0) > 1e-12 || orthogonality_error > 1e-12) {
-    //     spdlog::warn("[MathUtils] Rotation normalization may have failed: det={}, orth_error={}", det, orthogonality_error);
+    //     LOG_WARN("[MathUtils] Rotation normalization may have failed: det={}, orth_error={}", det, orthogonality_error);
     // }
     
     return R_normalized;

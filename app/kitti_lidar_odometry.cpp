@@ -10,18 +10,11 @@
  */
 
 #include <iostream>
-#include <spdlog/spdlog.h>
-#include <spdlog/sinks/stdout_color_sinks.h>
+#include "util/LogUtils.h"
 
 #include "player/kitti_player.h"
 
 int main(int argc, char** argv) {
-    // Initialize logging
-    auto console = spdlog::stdout_color_mt("console");
-    spdlog::set_default_logger(console);
-    spdlog::set_level(spdlog::level::info);
-    spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] %v");
-    
     // Parse command line arguments
     std::string config_path = "./config/kitti.yaml";
     
@@ -29,11 +22,11 @@ int main(int argc, char** argv) {
         config_path = argv[1];
     }
     
-    spdlog::info("════════════════════════════════════════════════════════════════════");
-    spdlog::info("                    KITTI LiDAR Odometry System                     ");
-    spdlog::info("════════════════════════════════════════════════════════════════════");
-    spdlog::info("Using configuration file: {}", config_path);
-    spdlog::info("");
+    LOG_INFO("════════════════════════════════════════════════════════════════════");
+    LOG_INFO("                    KITTI LiDAR Odometry System                     ");
+    LOG_INFO("════════════════════════════════════════════════════════════════════");
+    LOG_INFO("Using configuration file: {}", config_path);
+    LOG_INFO("");
     
     try {
         // Create and run KITTI player
@@ -41,33 +34,33 @@ int main(int argc, char** argv) {
         auto result = player.run_from_yaml(config_path);
         
         if (result.success) {
-            spdlog::info("");
-            spdlog::info("════════════════════════════════════════════════════════════════════");
-            spdlog::info("                        PROCESSING COMPLETED                        ");
-            spdlog::info("════════════════════════════════════════════════════════════════════");
-            spdlog::info(" Successfully processed {} frames", result.processed_frames);
-            spdlog::info(" Average processing time: {:.2f}ms", result.average_processing_time_ms);
-            spdlog::info(" Average frame rate: {:.1f}fps", 1000.0 / result.average_processing_time_ms);
+            LOG_INFO("");
+            LOG_INFO("════════════════════════════════════════════════════════════════════");
+            LOG_INFO("                        PROCESSING COMPLETED                        ");
+            LOG_INFO("════════════════════════════════════════════════════════════════════");
+            LOG_INFO(" Successfully processed {} frames", result.processed_frames);
+            LOG_INFO(" Average processing time: {:.2f}ms", result.average_processing_time_ms);
+            LOG_INFO(" Average frame rate: {:.1f}fps", 1000.0 / result.average_processing_time_ms);
             
             if (result.error_stats.available) {
-                spdlog::info("");
-                spdlog::info(" Trajectory Error Analysis:");
-                spdlog::info("   ATE RMSE: {:.4f}m", result.error_stats.ate_rmse);
-                spdlog::info("   ATE Mean: {:.4f}m", result.error_stats.ate_mean);
-                spdlog::info("   Rotation RMSE: {:.4f}°", result.error_stats.rotation_rmse);
-                spdlog::info("   Translation RMSE: {:.4f}m", result.error_stats.translation_rmse);
+                LOG_INFO("");
+                LOG_INFO(" Trajectory Error Analysis:");
+                LOG_INFO("   ATE RMSE: {:.4f}m", result.error_stats.ate_rmse);
+                LOG_INFO("   ATE Mean: {:.4f}m", result.error_stats.ate_mean);
+                LOG_INFO("   Rotation RMSE: {:.4f}°", result.error_stats.rotation_rmse);
+                LOG_INFO("   Translation RMSE: {:.4f}m", result.error_stats.translation_rmse);
             }
             
-            spdlog::info("════════════════════════════════════════════════════════════════════");
+            LOG_INFO("════════════════════════════════════════════════════════════════════");
             
             return 0;
         } else {
-            spdlog::error("Processing failed: {}", result.error_message);
+            LOG_ERROR("Processing failed: {}", result.error_message);
             return 1;
         }
         
     } catch (const std::exception& e) {
-        spdlog::error("Fatal error: {}", e.what());
+        LOG_ERROR("Fatal error: {}", e.what());
         return 1;
     }
 }
