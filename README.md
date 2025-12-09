@@ -27,7 +27,7 @@ cd lidar_odometry
 ./build/kitti_lidar_odometry config/kitti.yaml
 
 # MID360 / PLY files
-./build/mid360_lidar_odometry config/mid360.yaml
+./build/lidar_odometry config/mid360.yaml
 ```
 
 ## Sample Data
