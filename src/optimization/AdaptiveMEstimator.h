@@ -18,7 +18,7 @@
 #include <cmath>
 #include <limits>
 
-namespace lidar_odometry {
+namespace lidar_slam {
 namespace optimization {
 
 /**
@@ -283,6 +283,6 @@ private:
 };
 
 } // namespace optimization
-} // namespace lidar_odometry
+} // namespace lidar_slam
 
 #endif // LIDAR_ODOMETRY_ADAPTIVE_M_ESTIMATOR_H

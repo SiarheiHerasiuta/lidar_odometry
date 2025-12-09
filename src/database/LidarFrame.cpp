@@ -13,7 +13,7 @@
 #include "../util/PointCloudUtils.h"
 #include "util/LogUtils.h"
 
-namespace lidar_odometry {
+namespace lidar_slam {
 namespace database {
 
 LidarFrame::LidarFrame(int frame_id, 
@@ -372,4 +372,4 @@ KdTreePtr LidarFrame::get_local_map_kdtree() {
 }
 
 } // namespace database
-} // namespace lidar_odometry
+} // namespace lidar_slam

@@ -14,7 +14,7 @@
 #include <string>
 #include <memory>
 
-namespace lidar_odometry {
+namespace lidar_slam {
 namespace util {
 
 /**
@@ -126,6 +126,7 @@ struct SystemConfig {
     
     // ===== Pose Graph Optimization (PGO) =====
     bool pgo_enable_pgo = true;                     ///< Enable pose graph optimization
+    std::string pgo_backend = "manual";             ///< PGO backend: "gtsam" or "manual" (batch GN)
     double pgo_odometry_translation_noise = 0.5;    ///< Odometry constraint translation noise (lower = more trust)
     double pgo_odometry_rotation_noise = 0.5;       ///< Odometry constraint rotation noise (lower = more trust)
     double pgo_loop_translation_noise = 1.0;        ///< Loop closure constraint translation noise (lower = more trust)
@@ -235,4 +236,4 @@ inline SystemConfig& mutable_config() {
 }
 
 } // namespace util
-} // namespace lidar_odometry
+} // namespace lidar_slam

@@ -12,7 +12,7 @@
 #include "PangolinViewer.h"
 #include "../database/LidarFrame.h"
 #include "../util/ConfigUtils.h"
-#include "../map/VoxelMap.h"
+#include "../database/VoxelMap.h"
 #include "util/LogUtils.h"
 #include <iostream>
 #include <cmath>
@@ -21,7 +21,7 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-namespace lidar_odometry {
+namespace lidar_slam {
 namespace viewer {
 
 PangolinViewer::PangolinViewer()
@@ -1027,4 +1027,4 @@ void PangolinViewer::draw_surfels() {
 }
 
 } // namespace viewer
-} // namespace lidar_odometry
+} // namespace lidar_slam

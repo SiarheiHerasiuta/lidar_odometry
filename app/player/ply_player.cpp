@@ -29,12 +29,13 @@
 
 #include <util/ConfigUtils.h>
 #include <util/PointCloudUtils.h>
-#include <util/TypeUtils.h>
+#include <util/MathUtils.h>
+#include <util/PointCloudUtils.h>
 #include <processing/Estimator.h>
 #include <database/LidarFrame.h>
 #include <viewer/PangolinViewer.h>
 
-namespace lidar_odometry {
+namespace lidar_slam {
 namespace app {
 
 PLYPlayerResult PLYPlayer::run(const PLYPlayerConfig& config) {
@@ -263,7 +264,7 @@ std::vector<PLYPointCloudData> PLYPlayer::load_ply_point_cloud_list(const std::s
     return ply_data;
 }
 
-std::shared_ptr<lidar_odometry::util::PointCloud> PLYPlayer::load_ply_point_cloud(const std::string& ply_file_path) {
+std::shared_ptr<lidar_slam::util::PointCloud> PLYPlayer::load_ply_point_cloud(const std::string& ply_file_path) {
     auto cloud = std::make_shared<util::PointCloud>();
     
     // Check if file exists
@@ -486,7 +487,7 @@ void PLYPlayer::initialize_estimator(const util::SystemConfig& config) {
     LOG_INFO("[PLYPlayer] Initialized LiDAR odometry estimator");
 }
 
-double PLYPlayer::process_single_frame(std::shared_ptr<lidar_odometry::util::PointCloud> point_cloud,
+double PLYPlayer::process_single_frame(std::shared_ptr<lidar_slam::util::PointCloud> point_cloud,
                                       PLYFrameContext& context) {
     auto start_time = std::chrono::high_resolution_clock::now();
     
@@ -707,4 +708,4 @@ int PLYPlayer::extract_frame_number(const std::string& filename) {
 }
 
 } // namespace app
-} // namespace lidar_odometry
+} // namespace lidar_slam

@@ -25,10 +25,11 @@
 #include <mutex>
 #include <thread>
 #include <atomic>
-#include "../util/TypeUtils.h"
+#include "../util/MathUtils.h"
+#include "../util/PointCloudUtils.h"
 
 // Forward declarations
-namespace lidar_odometry {
+namespace lidar_slam {
 namespace database {
 class LidarFrame;
 }
@@ -37,7 +38,7 @@ class VoxelMap;
 }
 }
 
-namespace lidar_odometry {
+namespace lidar_slam {
 namespace viewer {
 
 using PointType = util::Point3D;  // Use our point type
@@ -352,4 +353,4 @@ private:
 };
 
 } // namespace viewer
-} // namespace lidar_odometry
+} // namespace lidar_slam

@@ -15,12 +15,13 @@
 #include <vector>
 #include <Eigen/Dense>
 #include <Eigen/Geometry>
-#include "../util/TypeUtils.h"
+#include "../util/MathUtils.h"
+#include "../util/PointCloudUtils.h"
 
 // Type definitions (declared here as needed)
-namespace lidar_odometry {
+namespace lidar_slam {
     // Import types from util namespace
-    using namespace lidar_odometry::util;
+    using namespace lidar_slam::util;
     
     // Import types from util namespace
     using namespace util;
@@ -43,7 +44,7 @@ namespace lidar_odometry {
     using CorrespondenceVector = std::vector<Correspondence>;
 }
 
-namespace lidar_odometry {
+namespace lidar_slam {
 namespace database {
 
 /**
@@ -392,4 +393,4 @@ using LidarFramePtr = std::shared_ptr<LidarFrame>;
 using LidarFrameConstPtr = std::shared_ptr<const LidarFrame>;
 
 } // namespace database
-} // namespace lidar_odometry
+} // namespace lidar_slam

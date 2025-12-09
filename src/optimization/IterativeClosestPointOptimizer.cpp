@@ -17,7 +17,7 @@
 #include <numeric>
 #include <algorithm>
 
-namespace lidar_odometry {
+namespace lidar_slam {
 namespace optimization {
 
 IterativeClosestPointOptimizer::IterativeClosestPointOptimizer(const ICPConfig& config)
@@ -660,4 +660,4 @@ bool IterativeClosestPointOptimizer::is_collinear(const Eigen::Vector3d& p1, con
 }
 
 } // namespace processing
-} // namespace lidar_odometry
+} // namespace lidar_slam

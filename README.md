@@ -1,6 +1,6 @@
 # LiDAR Odometry with Probabilistic Kernel Optimization (PKO)
 
-A high-performance real-time LiDAR odometry system designed for SLAM applications. It utilizes a 2-level hierarchical voxel map with precomputed surfels (hVox), point-to-plane ICP registration, GTSAM-based pose graph optimization, and Pangolin for 3D visualization.
+A high-performance real-time LiDAR odometry system designed for SLAM applications. It utilizes a 2-level hierarchical voxel map with precomputed surfels (hVox), point-to-plane ICP registration with Gauss-Newton optimization on Lie manifold, pose graph optimization for loop closure, and Pangolin for 3D visualization.
 
 The system incorporates techniques from the following papers:
 
@@ -22,9 +22,9 @@ ROS Wrapper: https://github.com/93won/lidar_odometry_ros_wrapper
 
 - ⚡ **Ultra-fast processing** (~400 FPS on KITTI dataset)
 - 🗺️ **2-Level VoxelMap** with precomputed surfels for O(1) correspondence lookup
-- 🎯 **Point-to-Plane ICP** with Gauss-Newton optimization
+- 🎯 **Point-to-Plane ICP** with Gauss-Newton optimization on Lie manifold
 - 📈 **Adaptive M-estimator** for robust estimation (PKO)
-- 🔧 **Asynchronous loop closure detection** and pose graph optimization (GTSAM)
+- 🔧 **Asynchronous loop closure detection** with LiDAR Iris and pose graph optimization
 - 🚗 Support for **KITTI dataset** (outdoor/vehicle scenarios)
 - 🏠 Support for **PLY files** (MID360, OS128, and other LiDARs)
 
@@ -94,7 +94,7 @@ cd build
 #### For MID360 Dataset (Indoor/Handheld)
 ```bash
 cd build
-./lidar_odometry ../config/mid360.yaml
+./mid360_lidar_odometry ../config/mid360.yaml
 ```
 
 ## Full KITTI Dataset
@@ -105,20 +105,55 @@ For complete evaluation, download the full KITTI dataset from:
 
 ## Project Structure
 
-- `app/`: Main applications and dataset players
-  - `kitti_lidar_odometry.cpp`: KITTI dataset application  
-  - `lidar_odometry.cpp`: PLY file player (MID360, OS128, etc.)
-  - `player/`: Dataset-specific player implementations
-- `src/`: Core modules (database, processing, optimization, map, viewer, util)
-- `thirdparty/`: External libraries (GTSAM, Pangolin, Sophus, spdlog, nanoflann)
-- `config/`: Configuration files for different datasets
-- `build.sh`: Build script for native compilation
+```
+lidar_odometry/
+├── app/                          # Main applications
+│   ├── kitti_lidar_odometry.cpp  # KITTI dataset runner
+│   ├── mid360_lidar_odometry.cpp # PLY file runner (MID360, OS128, etc.)
+│   └── player/                   # Dataset-specific players
+│       ├── kitti_player.h/cpp
+│       └── ply_player.h/cpp
+├── src/
+│   ├── database/                 # Data structures
+│   │   ├── LidarFrame.h/cpp      # Point cloud frame representation
+│   │   └── VoxelMap.h/cpp        # 2-Level hierarchical voxel map with surfels
+│   ├── processing/               # Core algorithms
+│   │   ├── Estimator.h/cpp       # Main odometry estimator
+│   │   └── LoopClosureDetector.h/cpp
+│   ├── optimization/             # Optimization modules
+│   │   ├── IterativeClosestPointOptimizer.h/cpp  # Point-to-plane ICP
+│   │   ├── AdaptiveMEstimator.h/cpp              # PKO robust estimator
+│   │   └── PoseGraphOptimizer.h/cpp              # Loop closure optimization
+│   ├── viewer/                   # Visualization
+│   │   └── PangolinViewer.h/cpp
+│   └── util/                     # Utilities
+│       ├── ConfigUtils.h/cpp     # YAML configuration parser
+│       ├── MathUtils.h/cpp       # Lie algebra (SO3/SE3), math functions
+│       ├── PointCloudUtils.h/cpp # Point cloud operations
+│       └── LogUtils.h            # Logging utilities
+├── thirdparty/                   # External libraries
+│   ├── pangolin/                 # 3D visualization
+│   ├── nanoflann/                # KD-tree for nearest neighbor search
+│   ├── LidarIris/                # Loop closure detection
+│   └── unordered_dense/          # Fast hash map
+├── config/                       # Configuration files
+│   ├── kitti.yaml
+│   ├── mid360.yaml
+│   └── os128.yaml
+└── build.sh                      # Build script
+```
 
 ## System Requirements
 
 - **Ubuntu 20.04/22.04** (recommended)
 - **C++17 Compiler** (g++ or clang++)
 - **CMake** (>= 3.16)
+
+### Dependencies (installed via build.sh)
+- Eigen3
+- OpenGL / GLEW
+- yaml-cpp
+- ATLAS / SuiteSparse
 
 
 ## License

@@ -41,7 +41,7 @@ fi
 
 # Build third-party dependencies
 echo ""
-echo "Step 1: Building third-party dependencies..."
+echo "Step 1: Checking third-party dependencies..."
 echo "=============================================="
 
 # Check if thirdparty directory exists
@@ -51,24 +51,8 @@ if [ ! -d "thirdparty" ]; then
     exit 1
 fi
 
-# Build Pangolin (using existing source)
-echo "Building Pangolin..."
-if [ ! -d "thirdparty/pangolin/build" ]; then
-    mkdir -p thirdparty/pangolin/build
-fi
-cd thirdparty/pangolin/build
-cmake .. \
-    -DBUILD_EXAMPLES=OFF \
-    -DBUILD_TOOLS=OFF \
-    -DBUILD_PYPANGOLIN=OFF \
-    -DBUILD_PANGOLIN_PYTHON=OFF
-make -j$NPROC
-
-cd ../../..
-
-# Sophus is header-only, no need to build
-
-# spdlog is header-only, no need to build
+# Pangolin, Sophus, spdlog are built via CMake add_subdirectory
+echo "Third-party libraries will be built automatically via CMake"
 
 # Build main project
 echo ""

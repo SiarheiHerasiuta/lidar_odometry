@@ -27,12 +27,13 @@
 
 #include <util/ConfigUtils.h>
 #include <util/PointCloudUtils.h>  // Added our point cloud utilities
-#include <util/TypeUtils.h>
+#include <util/MathUtils.h>
+#include <util/PointCloudUtils.h>
 #include <processing/Estimator.h>
 #include <database/LidarFrame.h>
 #include <viewer/PangolinViewer.h>
 
-namespace lidar_odometry {
+namespace lidar_slam {
 namespace app {
 
 KittiPlayerResult KittiPlayer::run(const KittiPlayerConfig& config) {
@@ -376,7 +377,7 @@ void KittiPlayer::initialize_estimator(const util::SystemConfig& config) {
     LOG_INFO("[KittiPlayer] Estimator initialized");
 }
 
-double KittiPlayer::process_single_frame(std::shared_ptr<lidar_odometry::util::PointCloud> point_cloud,
+double KittiPlayer::process_single_frame(std::shared_ptr<lidar_slam::util::PointCloud> point_cloud,
                                         FrameContext& context) {
     auto start_time = std::chrono::high_resolution_clock::now();
     
@@ -1076,4 +1077,4 @@ Eigen::Matrix4f KittiPlayer::calculate_alignment_transform(const std::vector<Eig
 }
 
 } // namespace app
-} // namespace lidar_odometry
+} // namespace lidar_slam

@@ -12,20 +12,94 @@
 
 #pragma once
 
-#include "../util/TypeUtils.h"
+#include "../util/MathUtils.h"
+#include "../util/PointCloudUtils.h"
 #include "../database/LidarFrame.h"
-#include "../map/VoxelMap.h"
+#include "../database/VoxelMap.h"
 #include "AdaptiveMEstimator.h"
-#include "../util/ICPUtils.h"
 
 #include <memory>
 #include <vector>
 
-namespace lidar_odometry {
+namespace lidar_slam {
 namespace optimization {
 
 // Import types from util namespace
-using namespace lidar_odometry::util;
+using namespace lidar_slam::util;
+
+// ============================================================================
+// ICP Types (previously in ICPUtils.h)
+// ============================================================================
+
+/**
+ * @brief Configuration for ICP algorithm
+ */
+struct ICPConfig {
+    // Convergence criteria
+    int max_iterations = 50;
+    double translation_tolerance = 1e-6;  // meters
+    double rotation_tolerance = 1e-6;     // radians
+    
+    // Correspondence parameters
+    double max_correspondence_distance = 1.0;  // meters
+    int min_correspondence_points = 10;
+    
+    // Outlier rejection
+    double outlier_rejection_ratio = 0.9;  // Keep top 90% of correspondences
+    bool use_robust_loss = true;
+    double robust_loss_delta = 0.1;  // Huber loss delta
+    
+    // Performance
+    bool use_kdtree = true;
+    int max_kdtree_neighbors = 1;
+};
+
+/**
+ * @brief Point-to-plane correspondence for ICP
+ */
+struct ICPPointCorrespondence {
+    Eigen::Vector3f source_point;
+    Eigen::Vector3f target_point;
+    Eigen::Vector3f plane_normal;    // Normal vector of target plane
+    double distance = 0.0;
+    double weight = 1.0;
+    bool is_valid = false;
+    
+    ICPPointCorrespondence() = default;
+    ICPPointCorrespondence(const Eigen::Vector3f& src, const Eigen::Vector3f& tgt, double dist)
+        : source_point(src), target_point(tgt), distance(dist), weight(1.0), is_valid(true) {}
+    ICPPointCorrespondence(const Eigen::Vector3f& src, const Eigen::Vector3f& tgt, const Eigen::Vector3f& normal, double dist)
+        : source_point(src), target_point(tgt), plane_normal(normal), distance(dist), weight(1.0), is_valid(true) {}
+};
+
+using ICPCorrespondenceVector = std::vector<ICPPointCorrespondence>;
+
+/**
+ * @brief ICP statistics for monitoring convergence
+ */
+struct ICPStatistics {
+    int iterations_used = 0;
+    double final_cost = 0.0;
+    double initial_cost = 0.0;
+    size_t correspondences_count = 0;
+    size_t inlier_count = 0;
+    double match_ratio = 0.0;
+    bool converged = false;
+    
+    void reset() {
+        iterations_used = 0;
+        final_cost = 0.0;
+        initial_cost = 0.0;
+        correspondences_count = 0;
+        inlier_count = 0;
+        match_ratio = 0.0;
+        converged = false;
+    }
+};
+
+// ============================================================================
+// Correspondence Data Structures
+// ============================================================================
 
 /**
  * @brief Two-frame correspondence data
@@ -163,4 +237,4 @@ private:
 };
 
 } // namespace processing
-} // namespace lidar_odometry
+} // namespace lidar_slam

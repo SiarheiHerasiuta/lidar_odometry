@@ -19,7 +19,7 @@
 #include <iomanip>
 #include <cstring>
 
-namespace lio {
+namespace lidar_slam {
 
 // ANSI color codes for terminal output
 #define LIO_COLOR_RESET   "\033[0m"
@@ -245,13 +245,13 @@ private:
     }
 };
 
-} // namespace lio
+} // namespace lidar_slam
 
 // ===== Convenience Macros =====
 
-#define LOG_DEBUG(...) lio::Logger::debug(__VA_ARGS__)
-#define LOG_INFO(...)  lio::Logger::info(__VA_ARGS__)
-#define LOG_WARN(...)  lio::Logger::warn(__VA_ARGS__)
-#define LOG_ERROR(...) lio::Logger::error(__VA_ARGS__)
+#define LOG_DEBUG(...) lidar_slam::Logger::debug(__VA_ARGS__)
+#define LOG_INFO(...)  lidar_slam::Logger::info(__VA_ARGS__)
+#define LOG_WARN(...)  lidar_slam::Logger::warn(__VA_ARGS__)
+#define LOG_ERROR(...) lidar_slam::Logger::error(__VA_ARGS__)
 
 #endif // LOG_UTILS_H

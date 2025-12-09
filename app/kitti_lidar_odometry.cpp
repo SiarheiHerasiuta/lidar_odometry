@@ -30,7 +30,7 @@ int main(int argc, char** argv) {
     
     try {
         // Create and run KITTI player
-        lidar_odometry::app::KittiPlayer player;
+        lidar_slam::app::KittiPlayer player;
         auto result = player.run_from_yaml(config_path);
         
         if (result.success) {

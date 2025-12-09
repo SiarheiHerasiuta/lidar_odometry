@@ -12,7 +12,8 @@
 #pragma once
 
 #include "../database/LidarFrame.h"
-#include "../util/TypeUtils.h"
+#include "../util/MathUtils.h"
+#include "../util/PointCloudUtils.h"
 #include "../util/PointCloudUtils.h"
 #include "../../thirdparty/LidarIris/LidarIris.h"
 
@@ -21,7 +22,7 @@
 #include <mutex>
 #include "util/LogUtils.h"
 
-namespace lidar_odometry {
+namespace lidar_slam {
 namespace processing {
 
 /**
@@ -145,4 +146,4 @@ private:
 };
 
 } // namespace processing
-} // namespace lidar_odometry
+} // namespace lidar_slam

@@ -43,7 +43,7 @@ void print_usage(const char* program_name) {
 int main(int argc, char** argv) {
     // Default configuration
     std::string config_path = "./config/mid360.yaml";
-    lidar_odometry::app::PLYPlayerConfig player_config;
+    lidar_slam::app::PLYPlayerConfig player_config;
     player_config.config_path = config_path;
     player_config.enable_viewer = true;
     player_config.enable_statistics = true;
@@ -122,7 +122,7 @@ int main(int argc, char** argv) {
     
     try {
         // Create and run PLY player
-        lidar_odometry::app::PLYPlayer player;
+        lidar_slam::app::PLYPlayer player;
         auto result = player.run_from_yaml(config_path);
         
         if (result.success) {

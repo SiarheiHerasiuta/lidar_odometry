@@ -13,7 +13,7 @@
 #include <algorithm>
 #include <chrono>
 
-namespace lidar_odometry {
+namespace lidar_slam {
 namespace processing {
 
 LoopClosureDetector::LoopClosureDetector(const LoopClosureConfig& config)
@@ -247,4 +247,4 @@ LidarIris::FeatureDesc LoopClosureDetector::extract_iris_feature(
 }
 
 } // namespace processing
-} // namespace lidar_odometry
+} // namespace lidar_slam

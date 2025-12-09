@@ -1,81 +1,107 @@
 /**
  * @file      PoseGraphOptimizer.h
- * @brief     GTSAM ISAM2-based pose graph optimization for loop closure.
+ * @brief     Batch Gauss-Newton pose graph optimization.
  * @author    Seungwon Choi
- * @date      2025-10-18
+ * @date      2025-12-09
  * @copyright Copyright (c) 2025 Seungwon Choi. All rights reserved.
  *
  * @par License
  * This project is released under the MIT License.
+ * 
+ * @par Reference
+ * This implementation follows GTSAM's Pose3 conventions:
+ * - Lie group SE(3) with [rotation, translation] tangent vector ordering
+ * - BetweenFactor error: log(measured^{-1} * T_from^{-1} * T_to)
+ * - Adjoint representation for Jacobian computation
+ * 
+ * @note Implementation details:
+ *       - Batch Gauss-Newton optimization
+ *       - Sparse Cholesky decomposition (Eigen::SimplicialLDLT)
+ *       - SE3 on-manifold optimization with analytical Jacobians
+ *       - Internal computation uses [rot, trans] ordering (GTSAM convention)
+ *       - Input/output uses our [trans, rot] convention (auto-converted)
  */
 
 #pragma once
 
-#include "../util/TypeUtils.h"
+#include "../util/MathUtils.h"
+#include "../util/PointCloudUtils.h"
+#include "../util/MathUtils.h"
+#include <Eigen/Sparse>
 #include <memory>
 #include <vector>
 #include <map>
 #include <set>
 #include <mutex>
 
-namespace gtsam {
-    class NonlinearFactorGraph;
-    class Values;
-    class ISAM2;
-}
-
-namespace lidar_odometry {
+namespace lidar_slam {
 namespace optimization {
 
-// Import types from util namespace
-using namespace lidar_odometry::util;
+using namespace lidar_slam::util;
 
+// Type aliases for convenience
+using Matrix6d = Eigen::Matrix<double, 6, 6>;
+using Vector6d = Eigen::Matrix<double, 6, 1>;
+using SpMat = Eigen::SparseMatrix<double>;
+using Triplet = Eigen::Triplet<double>;
+
+/**
+ * @brief Prior factor: fixes a pose to a measured value
+ */
+struct PriorFactor {
+    int key;                    // Variable index
+    SE3d measured;              // Measured pose
+    Matrix6d sqrt_info;         // Square root of information matrix
+    
+    PriorFactor(int k, const SE3d& m, const Matrix6d& info)
+        : key(k), measured(m) {
+        // Compute sqrt of information matrix
+        Eigen::LLT<Matrix6d> llt(info);
+        sqrt_info = llt.matrixL().transpose();
+    }
+};
+
+/**
+ * @brief Between factor: relative pose constraint between two poses
+ */
+struct BetweenFactor {
+    int key_from;               // From variable index
+    int key_to;                 // To variable index
+    SE3d measured;              // Measured relative pose (T_from^{-1} * T_to)
+    Matrix6d sqrt_info;         // Square root of information matrix
+    
+    BetweenFactor(int from, int to, const SE3d& m, const Matrix6d& info)
+        : key_from(from), key_to(to), measured(m) {
+        Eigen::LLT<Matrix6d> llt(info);
+        sqrt_info = llt.matrixL().transpose();
+    }
+};
+
+/**
+ * @brief Pose Graph Optimizer using Batch Gauss-Newton
+ * 
+ * Provides pose graph optimization for loop closure correction.
+ * Uses sparse Cholesky decomposition for efficient solving.
+ */
 class PoseGraphOptimizer {
 public:
     PoseGraphOptimizer();
     ~PoseGraphOptimizer();
     
-    // ===== Incremental API (LIO-SAM style) =====
+    // ===== Public API =====
     
-    /**
-     * @brief Add first keyframe with prior factor and run ISAM2 update
-     * @param keyframe_id Keyframe ID
-     * @param pose World pose of the keyframe (Twl)
-     * @return true if update succeeded
-     */
     bool add_first_keyframe(int keyframe_id, const SE3f& pose);
     
-    /**
-     * @brief Add keyframe with odometry constraint from previous keyframe and run ISAM2 update
-     * @param prev_keyframe_id Previous keyframe ID
-     * @param curr_keyframe_id Current keyframe ID  
-     * @param curr_pose World pose of current keyframe (Twl)
-     * @param relative_pose Relative pose from prev to curr (prev^-1 * curr)
-     * @param odom_trans_noise Translation noise for odometry
-     * @param odom_rot_noise Rotation noise for odometry
-     * @return true if update succeeded
-     */
     bool add_keyframe_with_odom(int prev_keyframe_id, int curr_keyframe_id,
                                 const SE3f& curr_pose,
                                 const SE3f& relative_pose,
                                 double odom_trans_noise = 0.1,
                                 double odom_rot_noise = 0.1);
     
-    /**
-     * @brief Add loop closure constraint and run ISAM2 update with extra iterations
-     * @param from_keyframe_id Loop matched keyframe ID
-     * @param to_keyframe_id Loop query (current) keyframe ID
-     * @param relative_pose Relative pose from matched to current (matched^-1 * current)
-     * @param loop_trans_noise Translation noise for loop closure
-     * @param loop_rot_noise Rotation noise for loop closure
-     * @return true if update succeeded
-     */
     bool add_loop_and_optimize(int from_keyframe_id, int to_keyframe_id,
                                const SE3f& relative_pose,
                                double loop_trans_noise = 0.05,
                                double loop_rot_noise = 0.05);
-    
-    // ===== Query API =====
     
     bool get_optimized_pose(int keyframe_id, SE3f& optimized_pose) const;
     
@@ -90,21 +116,99 @@ public:
     size_t get_loop_closure_count() const { return m_loop_closure_count; }
     
     void clear();
-
+    
 private:
-    mutable std::mutex m_mutex;  // Thread safety for all operations
+    // ===== Optimization Methods =====
     
-    std::unique_ptr<gtsam::ISAM2> m_isam2;
-    std::unique_ptr<gtsam::NonlinearFactorGraph> m_pending_graph;
-    std::unique_ptr<gtsam::Values> m_pending_values;
+    /**
+     * @brief Run batch Gauss-Newton optimization
+     * @param max_iterations Maximum number of GN iterations
+     * @param convergence_threshold Stop if ||dx|| < threshold
+     * @return true if converged
+     */
+    bool optimize(int max_iterations = 10, double convergence_threshold = 1e-6);
     
+    /**
+     * @brief Build sparse Hessian matrix and RHS vector
+     */
+    void buildLinearSystem(SpMat& H, Eigen::VectorXd& b);
+    
+    /**
+     * @brief Compute SE3 BetweenFactor error and Jacobians
+     * 
+     * Error: log(measured^{-1} * T_from^{-1} * T_to)
+     * 
+     * @param T_from From pose
+     * @param T_to To pose
+     * @param measured Measured relative pose
+     * @param J_from Output: Jacobian w.r.t. T_from (6x6)
+     * @param J_to Output: Jacobian w.r.t. T_to (6x6)
+     * @return 6D error vector
+     */
+    Vector6d computeBetweenError(const SE3d& T_from, const SE3d& T_to,
+                                  const SE3d& measured,
+                                  Matrix6d& J_from, Matrix6d& J_to) const;
+    
+    /**
+     * @brief Compute SE3 PriorFactor error and Jacobian
+     * 
+     * Error: log(measured^{-1} * T)
+     */
+    Vector6d computePriorError(const SE3d& T, const SE3d& measured,
+                                Matrix6d& J) const;
+    
+    /**
+     * @brief Compute right Jacobian of SE3
+     * Used for Jacobian computation on Lie group
+     */
+    Matrix6d rightJacobianSE3(const Vector6d& xi) const;
+    
+    /**
+     * @brief Compute inverse of right Jacobian of SE3
+     */
+    Matrix6d rightJacobianInverseSE3(const Vector6d& xi) const;
+    
+    /**
+     * @brief Compute Adjoint matrix of SE3
+     */
+    Matrix6d adjointSE3(const SE3d& T) const;
+    
+    /**
+     * @brief Convert SE3f to SE3d
+     */
+    SE3d toDouble(const SE3f& pose) const;
+    
+    /**
+     * @brief Convert SE3d to SE3f
+     */
+    SE3f toFloat(const SE3d& pose) const;
+    
+    /**
+     * @brief Create diagonal information matrix from noise sigmas
+     */
+    Matrix6d makeInformationMatrix(double trans_noise, double rot_noise) const;
+    
+    // ===== Member Variables =====
+    
+    mutable std::mutex m_mutex;
+    
+    // Graph structure
+    std::vector<PriorFactor> m_priors;
+    std::vector<BetweenFactor> m_betweens;
+    
+    // Current estimates (double precision for optimization)
+    std::map<int, SE3d> m_poses;
+    
+    // Keyframe tracking
     std::vector<int> m_keyframe_ids;
-    std::set<int> m_keyframe_set;  // For O(1) lookup
+    std::set<int> m_keyframe_set;
+    std::map<int, int> m_keyframe_to_index;  // keyframe_id -> variable index
     
-    size_t m_loop_closure_count;
-    size_t m_odometry_count;
-    bool m_is_initialized;
+    // Statistics
+    size_t m_loop_closure_count = 0;
+    size_t m_odometry_count = 0;
+    bool m_is_initialized = false;
 };
 
 } // namespace optimization
-} // namespace lidar_odometry
+} // namespace lidar_slam

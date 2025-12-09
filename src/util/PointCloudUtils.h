@@ -23,7 +23,7 @@
 #include <Eigen/Dense>
 #include <nanoflann.hpp>
 
-namespace lidar_odometry {
+namespace lidar_slam {
 namespace util {
 
 // ===== Point Types =====
@@ -638,4 +638,4 @@ private:
 };
 
 } // namespace util
-} // namespace lidar_odometry
+} // namespace lidar_slam

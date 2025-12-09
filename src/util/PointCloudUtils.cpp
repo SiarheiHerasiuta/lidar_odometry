@@ -13,7 +13,7 @@
 #include "util/LogUtils.h"
 #include <filesystem>
 
-namespace lidar_odometry {
+namespace lidar_slam {
 namespace util {
 
 PointCloud::Ptr load_kitti_binary(const std::string& filename) {
@@ -184,4 +184,4 @@ bool save_point_cloud_ply(const std::string& filename, const PointCloud::ConstPt
 }
 
 } // namespace util
-} // namespace lidar_odometry
+} // namespace lidar_slam

@@ -73,6 +73,7 @@ loop_detector:
 # Pose Graph Optimization (PGO) settings
 pose_graph_optimization:
   enable_pgo: true                   # Enable pose graph optimization
+  pgo_backend: "manual"              # PGO backend: "gtsam" or "manual" (batch GN)
   odometry_translation_noise: 1.0    # Odometry constraint translation noise (lower = more trust)
   odometry_rotation_noise: 1.0       # Odometry constraint rotation noise (lower = more trust)
   loop_translation_noise: 1.0        # Loop closure constraint translation noise (lower = more trust)

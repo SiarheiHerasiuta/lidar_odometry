@@ -24,7 +24,7 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-namespace lidar_odometry {
+namespace lidar_slam {
 namespace optimization {
 
 AdaptiveMEstimator::AdaptiveMEstimator(
@@ -914,4 +914,4 @@ void AdaptiveMEstimator::log_residual_histogram(const std::vector<double>& resid
 }
 
 } // namespace optimization
-} // namespace lidar_odometry
+} // namespace lidar_slam

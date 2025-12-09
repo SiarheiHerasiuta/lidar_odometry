@@ -11,7 +11,8 @@
 
 #pragma once
 
-#include "../util/TypeUtils.h"
+#include "../util/MathUtils.h"
+#include "../util/PointCloudUtils.h"
 #include "../util/ConfigUtils.h"
 #include "../database/LidarFrame.h"
 #include "../optimization/AdaptiveMEstimator.h"
@@ -19,8 +20,7 @@
 #include "../optimization/IterativeClosestPointOptimizer.h"
 #include "LoopClosureDetector.h"
 #include "../util/MathUtils.h"
-#include "../map/FastVoxelGrid.h"
-#include "../map/VoxelMap.h"
+#include "../database/VoxelMap.h"
 
 #include <memory>
 #include <vector>
@@ -33,11 +33,11 @@
 #include <optional>
 #include <chrono>
 
-namespace lidar_odometry {
+namespace lidar_slam {
 namespace processing {
 
 // Import types from util namespace  
-using namespace lidar_odometry::util;
+using namespace lidar_slam::util;
 
 /**
  * @brief LiDAR odometry estimator
@@ -355,4 +355,4 @@ private:
 };
 
 } // namespace processing
-} // namespace lidar_odometry
+} // namespace lidar_slam

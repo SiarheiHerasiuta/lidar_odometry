@@ -17,7 +17,7 @@
 #include <cmath>
 #include <numeric>
 
-namespace lidar_odometry {
+namespace lidar_slam {
 namespace processing {
 
 Estimator::Estimator(const util::SystemConfig& config)
@@ -34,8 +34,9 @@ Estimator::Estimator(const util::SystemConfig& config)
     , m_total_optimization_time_ms(0.0)
     , m_optimization_call_count(0)
 {
-    // Initialize pose graph optimizer (Ceres only)
+    // Initialize pose graph optimizer (Manual Batch GN)
     m_pose_graph_optimizer = std::make_shared<optimization::PoseGraphOptimizer>();
+    LOG_INFO("PGO backend: Manual (Batch GN)");
     
     // Create AdaptiveMEstimator with PKO configuration only
     m_adaptive_estimator = std::make_shared<optimization::AdaptiveMEstimator>(
@@ -51,7 +52,7 @@ Estimator::Estimator(const util::SystemConfig& config)
     );
     
     // Initialize IterativeClosestPointOptimizer with AdaptiveMEstimator and configuration
-    ICPConfig dual_frame_config;
+    optimization::ICPConfig dual_frame_config;
     dual_frame_config.max_iterations = config.max_iterations;
     dual_frame_config.translation_tolerance = config.translation_threshold;
     dual_frame_config.rotation_tolerance = config.rotation_threshold;
@@ -744,7 +745,7 @@ void Estimator::process_loop_closures(std::shared_ptr<database::LidarFrame> curr
                 current_keyframe->get_keyframe_id(),
                 m_loop_constraints.size());
     
-    // Incremental ISAM2 update with loop closure (includes 5 extra updates for convergence)
+    // Run pose graph optimization with loop closure
     bool opt_success = m_pose_graph_optimizer->add_loop_and_optimize(
         matched_keyframe->get_keyframe_id(),
         current_keyframe->get_keyframe_id(),
@@ -755,7 +756,7 @@ void Estimator::process_loop_closures(std::shared_ptr<database::LidarFrame> curr
     
     if (opt_success) {
         // Get optimized poses
-        auto optimized_poses = m_pose_graph_optimizer->get_all_optimized_poses();
+        std::map<int, SE3f> optimized_poses = m_pose_graph_optimizer->get_all_optimized_poses();
         
         LOG_INFO("[PGO-ISAM2] ========== PGO Results ==========");
         LOG_INFO("[PGO-ISAM2] Total keyframes optimized: {}", optimized_poses.size());
@@ -812,8 +813,8 @@ void Estimator::process_loop_closures(std::shared_ptr<database::LidarFrame> curr
 }
 
 void Estimator::apply_pose_graph_optimization() {
-    // Get all optimized poses from Ceres pose graph optimizer
-    auto optimized_poses = m_pose_graph_optimizer->get_all_optimized_poses();
+    // Get all optimized poses from pose graph optimizer
+    std::map<int, SE3f> optimized_poses = m_pose_graph_optimizer->get_all_optimized_poses();
     
     if (optimized_poses.empty()) {
         LOG_WARN("[Estimator] No optimized poses available from pose graph!");
@@ -1053,7 +1054,7 @@ bool Estimator::run_pgo_for_loop(
         }
     }
     
-    // Incremental ISAM2 update with loop closure
+    // Run pose graph optimization with loop closure
     bool opt_success = m_pose_graph_optimizer->add_loop_and_optimize(
         matched_keyframe->get_keyframe_id(),
         current_keyframe->get_keyframe_id(),
@@ -1068,7 +1069,7 @@ bool Estimator::run_pgo_for_loop(
     }
     
     // Get optimized poses and calculate statistics
-    auto optimized_poses = m_pose_graph_optimizer->get_all_optimized_poses();
+    std::map<int, SE3f> optimized_poses = m_pose_graph_optimizer->get_all_optimized_poses();
     
     float avg_trans_diff = 0.0f;
     float avg_rot_diff = 0.0f;
@@ -1340,4 +1341,4 @@ void Estimator::print_timing_statistics() const {
 }
 
 } // namespace processing
-} // namespace lidar_odometry
+} // namespace lidar_slam

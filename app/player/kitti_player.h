@@ -16,10 +16,11 @@
 #include <memory>
 #include <chrono>
 #include <Eigen/Dense>
-#include "../../src/util/TypeUtils.h"
+#include "../../src/util/MathUtils.h"
+#include "../../src/util/PointCloudUtils.h"
 
 // Forward declarations to avoid heavy includes
-namespace lidar_odometry {
+namespace lidar_slam {
     namespace processing {
         class Estimator;
     }
@@ -35,7 +36,7 @@ namespace lidar_odometry {
     }
 }
 
-namespace lidar_odometry {
+namespace lidar_slam {
 namespace app {
 
 /**
@@ -207,7 +208,7 @@ private:
      * @param filename Bin filename
      * @return Loaded point cloud
      */
-    std::shared_ptr<lidar_odometry::util::PointCloud> load_point_cloud(const std::string& dataset_path, 
+    std::shared_ptr<lidar_slam::util::PointCloud> load_point_cloud(const std::string& dataset_path, 
                                                          const std::string& filename);
     
     // === System Initialization ===
@@ -233,7 +234,7 @@ private:
      * @param context Frame processing context
      * @return Processing time in milliseconds
      */
-    double process_single_frame(std::shared_ptr<lidar_odometry::util::PointCloud> point_cloud,
+    double process_single_frame(std::shared_ptr<lidar_slam::util::PointCloud> point_cloud,
                                FrameContext& context);
     
     /**
@@ -359,4 +360,4 @@ private:
 };
 
 } // namespace app
-} // namespace lidar_odometry
+} // namespace lidar_slam

@@ -38,32 +38,12 @@ set(BUILD_PANGOLIN_TESTS OFF CACHE BOOL "Build Pangolin tests" FORCE)
 set(BUILD_PANGOLIN_TOOLS OFF CACHE BOOL "Build Pangolin tools" FORCE)
 add_subdirectory(${THIRDPARTY_DIR}/pangolin ${CMAKE_BINARY_DIR}/pangolin EXCLUDE_FROM_ALL)
 
-# Sophus is header-only, no need to build
-# Just include the headers
-
-# Build GTSAM from thirdparty
-set(GTSAM_DIR ${THIRDPARTY_DIR}/gtsam)
-set(GTSAM_BUILD_EXAMPLES_ALWAYS OFF CACHE BOOL "Build GTSAM examples" FORCE)
-set(GTSAM_BUILD_TESTS OFF CACHE BOOL "Build GTSAM tests" FORCE)
-set(GTSAM_BUILD_UNSTABLE OFF CACHE BOOL "Build GTSAM unstable" FORCE)
-set(GTSAM_BUILD_WITH_MARCH_NATIVE OFF CACHE BOOL "Build with march native" FORCE)
-set(GTSAM_INSTALL_CPPUNITLITE OFF CACHE BOOL "Install CppUnitLite" FORCE)
-set(GTSAM_INSTALL_GEOGRAPHICLIB OFF CACHE BOOL "Install GeographicLib" FORCE)
-set(GTSAM_USE_SYSTEM_EIGEN ON CACHE BOOL "Use system Eigen" FORCE)
-set(GTSAM_WITH_TBB OFF CACHE BOOL "Use TBB" FORCE)
-set(GTSAM_BUILD_WRAP OFF CACHE BOOL "Build wrap" FORCE)
-set(GTSAM_BUILD_PYTHON OFF CACHE BOOL "Build Python wrapper" FORCE)
-set(GTSAM_INSTALL_MATLAB_TOOLBOX OFF CACHE BOOL "Install MATLAB toolbox" FORCE)
-add_subdirectory(${GTSAM_DIR} ${CMAKE_BINARY_DIR}/gtsam EXCLUDE_FROM_ALL)
-
 # Include directories
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${EIGEN3_INCLUDE_DIRS}
     ${THIRDPARTY_DIR}/pangolin/include
     ${CMAKE_BINARY_DIR}/thirdparty/pangolin/include
-    ${THIRDPARTY_DIR}/gtsam
-    ${CMAKE_BINARY_DIR}/gtsam
     ${THIRDPARTY_DIR}/nanoflann
     ${THIRDPARTY_DIR}/LidarIris
     ${OpenCV_INCLUDE_DIRS}
@@ -73,16 +53,11 @@ include_directories(
 set(COMMON_SOURCES
     # Database module
     src/database/LidarFrame.cpp
+    src/database/VoxelMap.cpp
     
     # Processing module
     src/processing/Estimator.cpp
     src/processing/LoopClosureDetector.cpp
-    
-    # Map module
-    src/map/VoxelMap.cpp
-    
-    # Util module
-    src/util/LieUtils.cpp
     
     # Third-party
     thirdparty/LidarIris/LidarIris.cpp
@@ -98,6 +73,7 @@ set(COMMON_SOURCES
     
     # Utility module
     src/util/ConfigUtils.cpp
+    src/util/MathUtils.cpp
     src/util/MathUtils.cpp
     src/util/PointCloudUtils.cpp
 )
@@ -135,8 +111,6 @@ target_link_libraries(kitti_lidar_odometry
     OpenGL::GL
     GLEW::GLEW
     Threads::Threads
-    gtsam
-    tbb
     pango_display
     pango_windowing
     pango_opengl
@@ -152,8 +126,6 @@ target_link_libraries(lidar_odometry
     OpenGL::GL
     GLEW::GLEW
     Threads::Threads
-    gtsam
-    tbb
     pango_display
     pango_windowing
     pango_opengl

@@ -17,7 +17,7 @@
 #include <algorithm>
 #include <cctype>
 
-namespace lidar_odometry {
+namespace lidar_slam {
 namespace util {
 
 // Simple YAML parser for our configuration
@@ -340,6 +340,9 @@ bool ConfigManager::load_from_file(const std::string& config_file) {
         if (config_map.find("pose_graph_optimization.enable_pgo") != config_map.end()) {
             m_config.pgo_enable_pgo = (config_map["pose_graph_optimization.enable_pgo"] == "true");
         }
+        if (config_map.find("pose_graph_optimization.pgo_backend") != config_map.end()) {
+            m_config.pgo_backend = config_map["pose_graph_optimization.pgo_backend"];
+        }
         if (config_map.find("pose_graph_optimization.odometry_translation_noise") != config_map.end()) {
             m_config.pgo_odometry_translation_noise = std::stod(config_map["pose_graph_optimization.odometry_translation_noise"]);
         }
@@ -423,4 +426,4 @@ SystemConfig ConfigManager::create_default_config() {
 }
 
 } // namespace util
-} // namespace lidar_odometry
+} // namespace lidar_slam
