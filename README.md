@@ -25,8 +25,7 @@ ROS Wrapper: https://github.com/93won/lidar_odometry_ros_wrapper
 - 🎯 **Point-to-Plane ICP** with Gauss-Newton optimization on Lie manifold
 - 📈 **Adaptive M-estimator** for robust estimation (PKO)
 - 🔧 **Asynchronous loop closure detection** with LiDAR Iris and pose graph optimization
-- 🚗 Support for **KITTI dataset** (outdoor/vehicle scenarios)
-- 🏠 Support for **PLY files** (MID360, OS128, and other LiDARs)
+
 
 ## Demo
 
