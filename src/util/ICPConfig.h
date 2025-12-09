@@ -15,7 +15,6 @@
 #include <vector>
 #include "Types.h"
 #include <Eigen/Dense>
-#include <sophus/se3.hpp>
 
 namespace lidar_odometry {
 namespace util {
@@ -25,7 +24,7 @@ using ICPPointType = Point3D;
 using ICPPointCloud = PointCloud;
 using ICPPointCloudPtr = std::shared_ptr<ICPPointCloud>;
 using ICPPointCloudConstPtr = std::shared_ptr<const ICPPointCloud>;
-using ICPPose = Sophus::SE3f;
+using ICPPose = SE3f;
 using ICPVector3f = Eigen::Vector3f;
 
 /**

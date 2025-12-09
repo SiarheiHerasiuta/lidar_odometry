@@ -15,7 +15,6 @@
 #include <vector>
 #include <Eigen/Dense>
 #include <Eigen/Geometry>
-#include <sophus/se3.hpp>
 #include "../util/Types.h"
 
 // Type definitions (declared here as needed)

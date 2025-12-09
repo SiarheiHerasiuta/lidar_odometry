@@ -28,13 +28,16 @@
 namespace lidar_odometry {
 namespace optimization {
 
+// Import types from util namespace
+using namespace lidar_odometry::util;
+
 namespace {
-    gtsam::Pose3 se3_to_pose3(const Sophus::SE3f& se3) {
-        Eigen::Matrix4d mat = se3.matrix().cast<double>();
+    gtsam::Pose3 se3_to_pose3(const SE3f& se3) {
+        Eigen::Matrix4d mat = se3.Matrix().cast<double>();
         return gtsam::Pose3(mat);
     }
     
-    Sophus::SE3f pose3_to_se3(const gtsam::Pose3& pose3) {
+    SE3f pose3_to_se3(const gtsam::Pose3& pose3) {
         // Get rotation and translation from GTSAM Pose3
         Eigen::Matrix3d R = pose3.rotation().matrix();
         Eigen::Vector3d t = pose3.translation();
@@ -49,8 +52,8 @@ namespace {
         }
         
         // Construct SE3f from orthogonalized rotation and translation
-        Sophus::SO3f so3(R_ortho.cast<float>());
-        return Sophus::SE3f(so3, t.cast<float>());
+        SO3f so3(R_ortho.cast<float>());
+        return SE3f(so3, t.cast<float>());
     }
     
     gtsam::Key make_key(int keyframe_id) {
@@ -298,7 +301,7 @@ bool PoseGraphOptimizer::get_optimized_pose(int keyframe_id, SE3f& optimized_pos
     }
 }
 
-std::map<int, PoseGraphOptimizer::SE3f> PoseGraphOptimizer::get_all_optimized_poses() const {
+std::map<int, SE3f> PoseGraphOptimizer::get_all_optimized_poses() const {
     std::lock_guard<std::mutex> lock(m_mutex);
     
     std::map<int, SE3f> result;

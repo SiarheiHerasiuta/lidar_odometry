@@ -504,7 +504,7 @@ double PLYPlayer::process_single_frame(std::shared_ptr<lidar_odometry::util::Poi
             
             // Get current pose estimate and convert to Matrix4f
             auto current_pose_se3 = m_estimator->get_current_pose();
-            Eigen::Matrix4f current_pose = current_pose_se3.matrix();
+            Eigen::Matrix4f current_pose = current_pose_se3.Matrix();
             context.estimated_poses.push_back(current_pose);
             context.current_lidar_frame = lidar_frame;
         }
@@ -534,7 +534,7 @@ void PLYPlayer::update_viewer(viewer::PangolinViewer& viewer,
         // Fallback: create new frame with estimated pose
         Eigen::Matrix4f current_pose = context.estimated_poses.back();
         auto lidar_frame = std::make_shared<database::LidarFrame>(context.frame_index, context.timestamp, point_cloud);
-        Sophus::SE3f se3_pose(current_pose);
+        SE3f se3_pose(current_pose);
         lidar_frame->set_pose(se3_pose);
         viewer.update_current_frame(lidar_frame);
         viewer.add_trajectory_frame(lidar_frame);

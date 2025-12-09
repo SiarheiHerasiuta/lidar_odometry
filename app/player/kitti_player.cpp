@@ -396,7 +396,7 @@ double KittiPlayer::process_single_frame(std::shared_ptr<lidar_odometry::util::P
     if (result) {
         // Get pose from the processed frame and convert SE3f to Matrix4f
         const auto& se3_pose = lidar_frame->get_pose();
-        Eigen::Matrix4f pose_matrix = se3_pose.matrix();
+        Eigen::Matrix4f pose_matrix = se3_pose.Matrix();
         context.estimated_poses.push_back(pose_matrix);
     } else {
         spdlog::warn("[KittiPlayer] Frame processing failed for frame {}", context.current_idx);
@@ -439,7 +439,7 @@ void KittiPlayer::update_viewer(viewer::PangolinViewer& viewer,
         // Fallback: create new frame with estimated pose
         Eigen::Matrix4f current_pose = context.estimated_poses.back();
         auto lidar_frame = std::make_shared<database::LidarFrame>(context.frame_index, context.timestamp, point_cloud);
-        Sophus::SE3f se3_pose(current_pose);
+        SE3f se3_pose(current_pose);
         lidar_frame->set_pose(se3_pose);
         viewer.update_current_frame(lidar_frame);
         viewer.add_trajectory_frame(lidar_frame);
@@ -536,7 +536,7 @@ void KittiPlayer::save_trajectory_kitti_format(const FrameContext& context,
     
     // Use processed_frames_list and get_pose() for dynamic post-PGO poses
     for (const auto& frame : context.processed_frames_list) {
-        Eigen::Matrix4f pose = frame->get_pose().matrix();
+        Eigen::Matrix4f pose = frame->get_pose().Matrix();
         file << pose_to_kitti_string(pose) << std::endl;
     }
     
@@ -554,7 +554,7 @@ void KittiPlayer::save_trajectory_tum_format(const FrameContext& context,
     
     // Use processed_frames_list and get_pose() for dynamic post-PGO poses
     for (size_t i = 0; i < context.processed_frames_list.size(); ++i) {
-        Eigen::Matrix4f pose = context.processed_frames_list[i]->get_pose().matrix();
+        Eigen::Matrix4f pose = context.processed_frames_list[i]->get_pose().Matrix();
         
         Eigen::Vector3f translation = pose.block<3,1>(0,3);
         Eigen::Matrix3f rotation = pose.block<3,3>(0,0);
@@ -592,7 +592,7 @@ KittiPlayerResult::ErrorStats KittiPlayer::analyze_trajectory_errors(const Frame
     std::map<int, Eigen::Matrix4f> poses_gt, poses_result;
     for (size_t i = 0; i < min_size; ++i) {
         poses_gt[i] = context.gt_poses[i];
-        poses_result[i] = context.processed_frames_list[i]->get_pose().matrix();
+        poses_result[i] = context.processed_frames_list[i]->get_pose().Matrix();
     }
     
     // KITTI-style first frame alignment

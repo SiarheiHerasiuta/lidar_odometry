@@ -22,8 +22,6 @@
 #include "../map/FastVoxelGrid.h"
 #include "../map/VoxelMap.h"
 
-#include <sophus/se3.hpp>
-
 #include <memory>
 #include <vector>
 #include <map>

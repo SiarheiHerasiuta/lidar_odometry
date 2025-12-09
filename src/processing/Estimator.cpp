@@ -153,7 +153,7 @@ bool Estimator::process_frame(std::shared_ptr<database::LidarFrame> current_fram
     auto map_update_start = std::chrono::high_resolution_clock::now();
     
     PointCloudPtr post_opt_cloud_world(new PointCloud());
-    Eigen::Matrix4f T_wl_final = optimized_pose.matrix();
+    Eigen::Matrix4f T_wl_final = optimized_pose.Matrix();
     util::transform_point_cloud(feature_cloud, post_opt_cloud_world, T_wl_final);
 
     current_frame->set_feature_cloud_global(post_opt_cloud_world); // Cache world coordinate features
@@ -164,7 +164,7 @@ bool Estimator::process_frame(std::shared_ptr<database::LidarFrame> current_fram
     m_T_wl_current = optimized_pose;
     
     // Step 5: Update velocity model
-    m_velocity = m_previous_frame->get_pose().inverse() * m_T_wl_current;
+    m_velocity = m_previous_frame->get_pose().Inverse() * m_T_wl_current;
 
 
     // Update frame pose and trajectory
@@ -176,7 +176,7 @@ bool Estimator::process_frame(std::shared_ptr<database::LidarFrame> current_fram
     if (m_last_keyframe) {
         current_frame->set_previous_keyframe(m_last_keyframe);
         // Calculate and store relative pose from keyframe to current frame
-        SE3f relative_pose = m_last_keyframe->get_stored_pose().inverse() * m_T_wl_current;
+        SE3f relative_pose = m_last_keyframe->get_stored_pose().Inverse() * m_T_wl_current;
         current_frame->set_relative_pose(relative_pose);
     }
     auto pose_calc_end = std::chrono::high_resolution_clock::now();
@@ -243,7 +243,7 @@ void Estimator::initialize_first_frame(std::shared_ptr<database::LidarFrame> fra
 
     // Transform features to world coordinates using current pose
     PointCloudPtr feature_cloud_world(new PointCloud());
-    Eigen::Matrix4f T_wl = m_T_wl_current.matrix();
+    Eigen::Matrix4f T_wl = m_T_wl_current.Matrix();
     util::transform_point_cloud(feature_cloud, feature_cloud_world, T_wl);
     
     // Set global feature cloud in frame
@@ -274,14 +274,14 @@ SE3f Estimator::estimate_motion_dual_frame(std::shared_ptr<database::LidarFrame>
         return initial_guess;
     }
     
-    // Convert SE3f to Sophus::SE3f for optimization::IterativeClosestPointOptimizer
-    Sophus::SE3f initial_transform_sophus(initial_guess.rotationMatrix(), initial_guess.translation());
-    Sophus::SE3f optimized_transform_sophus;
+    // Convert SE3f to SE3f for optimization::IterativeClosestPointOptimizer
+    SE3f initial_transform_sophus(initial_guess.RotationMatrix(), initial_guess.Translation());
+    SE3f optimized_transform_sophus;
 
     // Debug log for initial guess (only in debug mode)
     spdlog::debug("Check Initial Guess: Translation ({:.3f}, {:.3f}, {:.3f}), Rotation ({:.3f}, {:.3f}, {:.3f})",
-                 initial_guess.translation().x(), initial_guess.translation().y(), initial_guess.translation().z(),
-                 initial_guess.so3().log().x(), initial_guess.so3().log().y(), initial_guess.so3().log().z());
+                 initial_guess.Translation().x(), initial_guess.Translation().y(), initial_guess.Translation().z(),
+                 initial_guess.Rotation().Log().x(), initial_guess.Rotation().Log().y(), initial_guess.Rotation().Log().z());
     
     // Perform ICP optimization using VoxelMap
     bool success = m_icp_optimizer->optimize(
@@ -297,7 +297,7 @@ SE3f Estimator::estimate_motion_dual_frame(std::shared_ptr<database::LidarFrame>
     }
     
     // Convert back to SE3f
-    SE3f T_keyframe_current(optimized_transform_sophus.rotationMatrix(), optimized_transform_sophus.translation());
+    SE3f T_keyframe_current(optimized_transform_sophus.RotationMatrix(), optimized_transform_sophus.Translation());
     
     // Collect optimization statistics
     m_total_optimization_iterations += 10; // TODO: Get actual iterations from optimization::IterativeClosestPointOptimizer
@@ -326,7 +326,7 @@ std::shared_ptr<database::LidarFrame> Estimator::select_best_keyframe(const SE3f
     }
     
     if (best_keyframe) {
-        Vector3f translation_diff = current_pose.translation() - best_keyframe->get_pose().translation();
+        Vector3f translation_diff = current_pose.Translation() - best_keyframe->get_pose().Translation();
         double distance = translation_diff.norm();
         spdlog::debug("[Estimator] Selected most recent keyframe at distance {:.2f}m", distance);
     } else {
@@ -343,11 +343,11 @@ bool Estimator::should_create_keyframe(const SE3f& current_pose) {
     }
     
     // Calculate distance and rotation from last keyframe
-    Vector3f translation_diff = current_pose.translation() - m_last_keyframe_pose.translation();
+    Vector3f translation_diff = current_pose.Translation() - m_last_keyframe_pose.Translation();
     double distance = translation_diff.norm();
     
-    Sophus::SO3f rotation_diff = m_last_keyframe_pose.so3().inverse() * current_pose.so3();
-    double rotation_angle = rotation_diff.log().norm();
+    SO3f rotation_diff = m_last_keyframe_pose.Rotation().Inverse() * current_pose.Rotation();
+    double rotation_angle = rotation_diff.Log().norm();
 
     // Debug log for keyframe check
     spdlog::debug("[Estimator] Keyframe check: Δt={:.2f}m, Δr={:.2f}° (thresholds: {:.2f}m, {:.2f}°)", 
@@ -372,19 +372,19 @@ void Estimator::create_keyframe(std::shared_ptr<database::LidarFrame> frame)
         SE3f curr_pose = frame->get_pose();
         
         // Compute relative pose: T_prev_curr = T_prev^-1 * T_curr
-        SE3f relative_pose_raw = prev_pose.inverse() * curr_pose;
+        SE3f relative_pose_raw = prev_pose.Inverse() * curr_pose;
         
         // Normalize rotation matrix for numerical stability
-        Eigen::Matrix3f rotation_matrix = relative_pose_raw.rotationMatrix();
+        Eigen::Matrix3f rotation_matrix = relative_pose_raw.RotationMatrix();
         Eigen::Matrix3f normalized_rotation = util::MathUtils::normalize_rotation_matrix(rotation_matrix);
-        SE3f relative_pose(normalized_rotation, relative_pose_raw.translation());
+        SE3f relative_pose(normalized_rotation, relative_pose_raw.Translation());
         
         frame->set_relative_pose(relative_pose);
         
         spdlog::debug("[Estimator] Set relative pose for keyframe {}: t_norm={:.3f}, r_norm={:.3f}°", 
                      frame->get_keyframe_id(), 
-                     relative_pose.translation().norm(),
-                     relative_pose.so3().log().norm() * 180.0f / M_PI);
+                     relative_pose.Translation().norm(),
+                     relative_pose.Rotation().Log().norm() * 180.0f / M_PI);
         
         // Incremental PGO: add keyframe with odometry constraint
         if (m_config.pgo_enable_pgo) {
@@ -440,7 +440,7 @@ void Estimator::create_keyframe(std::shared_ptr<database::LidarFrame> frame)
     auto voxelmap_start = std::chrono::high_resolution_clock::now();
     
     // Update VoxelMap: add new points and remove distant voxels
-    Eigen::Vector3f current_position = frame->get_pose().translation();
+    Eigen::Vector3f current_position = frame->get_pose().Translation();
     Eigen::Vector3d sensor_position = current_position.cast<double>();
     double max_distance = m_config.max_range * 1.2;
     
@@ -622,7 +622,7 @@ size_t Estimator::get_loop_closure_count() const {
 std::map<int, Eigen::Matrix4f> Estimator::get_optimized_trajectory() const {
     std::map<int, Eigen::Matrix4f> result;
     for (const auto& [id, pose] : m_optimized_poses) {
-        result[id] = pose.matrix();
+        result[id] = pose.Matrix();
     }
     return result;
 }
@@ -665,7 +665,7 @@ void Estimator::process_loop_closures(std::shared_ptr<database::LidarFrame> curr
         return;
     }
 
-    Sophus::SE3f T_current_l2l;
+    SE3f T_current_l2l;
     float inlier_ratio = 0.0f;
 
     bool icp_success = m_icp_optimizer->optimize_loop(
@@ -694,18 +694,18 @@ void Estimator::process_loop_closures(std::shared_ptr<database::LidarFrame> curr
     // ICP optimizes curr_keyframe pose, returns correction transform
     
     // Get current poses (with drift)
-    Sophus::SE3f T_world_current = current_keyframe->get_pose();
-    Sophus::SE3f T_world_matched = matched_keyframe->get_pose();
+    SE3f T_world_current = current_keyframe->get_pose();
+    SE3f T_world_matched = matched_keyframe->get_pose();
     
     // Apply ICP correction: T_corrected = T_correction * T_original
     // ICP returns: T_correction = T_original^-1 * T_optimized
     // So: T_corrected = (T_original^-1 * T_optimized) * T_original = T_optimized
-    Sophus::SE3f T_current_corrected = T_world_current * T_current_l2l;
+    SE3f T_current_corrected = T_world_current * T_current_l2l;
     
     // Calculate pose difference for logging (how much correction ICP suggests)
-    SE3f pose_diff = T_world_current.inverse() * T_current_corrected;
-    float translation_diff = pose_diff.translation().norm();
-    float rotation_diff = pose_diff.so3().log().norm() * 180.0f / M_PI;
+    SE3f pose_diff = T_world_current.Inverse() * T_current_corrected;
+    float translation_diff = pose_diff.Translation().norm();
+    float rotation_diff = pose_diff.Rotation().Log().norm() * 180.0f / M_PI;
     
     spdlog::info("[Estimator] Loop closure ICP success {} <-> {}: Δt={:.3f}m, Δr={:.2f}°, inliers={:.1f}%",
                 candidate.query_keyframe_id, candidate.match_keyframe_id,
@@ -713,7 +713,7 @@ void Estimator::process_loop_closures(std::shared_ptr<database::LidarFrame> curr
     
     // Compute relative pose constraint: from matched to current
     // Using GTSAM's between() logic: poseFrom.between(poseTo) = poseFrom^-1 * poseTo
-    Sophus::SE3f T_matched_to_current = T_world_matched.inverse() * T_current_corrected;
+    SE3f T_matched_to_current = T_world_matched.Inverse() * T_current_corrected;
     
     // Check if PGO is enabled
     if (!m_config.pgo_enable_pgo) {
@@ -774,8 +774,8 @@ void Estimator::process_loop_closures(std::shared_ptr<database::LidarFrame> curr
                 SE3f old_pose = pre_pgo_poses[kf_id];
                 SE3f new_pose = it->second;
                 
-                float translation_diff = (new_pose.translation() - old_pose.translation()).norm();
-                float rotation_diff = (new_pose.so3().log() - old_pose.so3().log()).norm() * 180.0f / M_PI;
+                float translation_diff = (new_pose.Translation() - old_pose.Translation()).norm();
+                float rotation_diff = (new_pose.Rotation().Log() - old_pose.Rotation().Log()).norm() * 180.0f / M_PI;
                 
                 max_translation_diff = std::max(max_translation_diff, translation_diff);
                 max_rotation_diff = std::max(max_rotation_diff, rotation_diff);
@@ -824,9 +824,9 @@ void Estimator::apply_pose_graph_optimization() {
 
     auto last_keyframe = m_keyframes.back();
 
-    Sophus::SE3f last_keyframe_pose_before_opt = last_keyframe->get_pose();
-    Sophus::SE3f last_keyframe_pose_after_opt = optimized_poses[last_keyframe->get_keyframe_id()];
-    Sophus::SE3f total_correction = last_keyframe_pose_after_opt * last_keyframe_pose_before_opt.inverse();
+    SE3f last_keyframe_pose_before_opt = last_keyframe->get_pose();
+    SE3f last_keyframe_pose_after_opt = optimized_poses[last_keyframe->get_keyframe_id()];
+    SE3f total_correction = last_keyframe_pose_after_opt * last_keyframe_pose_before_opt.Inverse();
     
     // Update all keyframe poses (absolute poses only)
     // NOTE: We do NOT recalculate relative poses after PGO!
@@ -844,8 +844,8 @@ void Estimator::apply_pose_graph_optimization() {
         SE3f old_pose = keyframe->get_pose();
         SE3f new_pose = it->second;
         
-        float translation_diff = (new_pose.translation() - old_pose.translation()).norm();
-        float rotation_diff = (new_pose.so3().log() - old_pose.so3().log()).norm() * 180.0f / M_PI;
+        float translation_diff = (new_pose.Translation() - old_pose.Translation()).norm();
+        float rotation_diff = (new_pose.Rotation().Log() - old_pose.Rotation().Log()).norm() * 180.0f / M_PI;
         
         spdlog::debug("[Estimator] Keyframe {}: Δt={:.3f}m, Δr={:.2f}°", 
                      kf_id, translation_diff, rotation_diff);
@@ -859,7 +859,7 @@ void Estimator::apply_pose_graph_optimization() {
 
     // Apply correction to VoxelMap (transform centroids and re-hash)
     auto voxelmap_correction_start = std::chrono::high_resolution_clock::now();
-    m_voxel_map->ApplyTransformAndRehash(total_correction.matrix());
+    m_voxel_map->ApplyTransformAndRehash(total_correction.Matrix());
     auto voxelmap_correction_end = std::chrono::high_resolution_clock::now();
     double voxelmap_correction_ms = std::chrono::duration<double, std::milli>(voxelmap_correction_end - voxelmap_correction_start).count();
     
@@ -980,7 +980,7 @@ bool Estimator::run_pgo_for_loop(
     }
 
     // Perform ICP optimization for loop closure
-    Sophus::SE3f T_current_l2l;
+    SE3f T_current_l2l;
     float inlier_ratio = 0.0f;
 
     bool icp_success = m_icp_optimizer->optimize_loop(
@@ -1005,23 +1005,23 @@ bool Estimator::run_pgo_for_loop(
     }
 
     // Get current poses
-    Sophus::SE3f T_world_current = current_keyframe->get_pose();
-    Sophus::SE3f T_world_matched = matched_keyframe->get_pose();
+    SE3f T_world_current = current_keyframe->get_pose();
+    SE3f T_world_matched = matched_keyframe->get_pose();
     
     // Apply ICP correction
-    Sophus::SE3f T_current_corrected = T_world_current * T_current_l2l;
+    SE3f T_current_corrected = T_world_current * T_current_l2l;
     
     // Calculate pose difference
-    SE3f pose_diff = T_world_current.inverse() * T_current_corrected;
-    float translation_diff = pose_diff.translation().norm();
-    float rotation_diff = pose_diff.so3().log().norm() * 180.0f / M_PI;
+    SE3f pose_diff = T_world_current.Inverse() * T_current_corrected;
+    float translation_diff = pose_diff.Translation().norm();
+    float rotation_diff = pose_diff.Rotation().Log().norm() * 180.0f / M_PI;
     
     spdlog::debug("[Background] Loop detected {} <-> {}: Δt={:.2f}m, Δr={:.2f}°, {:.1f}% inliers",
                 candidate.query_keyframe_id, candidate.match_keyframe_id,
                 translation_diff, rotation_diff, inlier_ratio * 100.0f);
     
     // Compute relative pose constraint
-    Sophus::SE3f T_matched_to_current = T_world_matched.inverse() * T_current_corrected;
+    SE3f T_matched_to_current = T_world_matched.Inverse() * T_current_corrected;
     
     // Check if PGO is enabled
     if (!m_config.pgo_enable_pgo) {
@@ -1081,8 +1081,8 @@ bool Estimator::run_pgo_for_loop(
             SE3f old_pose = kf_poses_before[i];
             SE3f new_pose = it->second;
             
-            float trans_diff = (new_pose.translation() - old_pose.translation()).norm();
-            float rot_diff = (new_pose.so3().log() - old_pose.so3().log()).norm() * 180.0f / M_PI;
+            float trans_diff = (new_pose.Translation() - old_pose.Translation()).norm();
+            float rot_diff = (new_pose.Rotation().Log() - old_pose.Rotation().Log()).norm() * 180.0f / M_PI;
             
             avg_trans_diff += trans_diff;
             avg_rot_diff += rot_diff;
@@ -1103,7 +1103,7 @@ bool Estimator::run_pgo_for_loop(
     int last_kf_id = kf_ids.back();
     SE3f last_kf_pose_before = kf_poses_before.back();
     SE3f last_kf_pose_after = optimized_poses[last_kf_id];
-    SE3f last_kf_correction = last_kf_pose_after * last_kf_pose_before.inverse();
+    SE3f last_kf_correction = last_kf_pose_after * last_kf_pose_before.Inverse();
     
     // Prepare PGO result for main thread
     PGOResult result;
@@ -1163,7 +1163,7 @@ void Estimator::apply_pending_pgo_result_if_available() {
     propagate_poses_after_pgo(last_optimized_id);
     
     // Step 3: Apply correction to VoxelMap (critical for ICP to work correctly)
-    m_voxel_map->ApplyTransformAndRehash(result->last_kf_correction.matrix());
+    m_voxel_map->ApplyTransformAndRehash(result->last_kf_correction.Matrix());
     
     // Step 4: Update last keyframe's local map from VoxelMap (for visualization)
     {
@@ -1224,7 +1224,7 @@ void Estimator::transform_current_keyframe_map(const SE3f& correction) {
     }
     
     util::PointCloudPtr transformed_map = std::make_shared<util::PointCloud>();
-    util::transform_point_cloud(local_map, transformed_map, correction.matrix());
+    util::transform_point_cloud(local_map, transformed_map, correction.Matrix());
     
     current_kf->set_local_map(transformed_map);
     // Note: KdTree no longer built - ICP uses VoxelMap directly
@@ -1252,7 +1252,7 @@ bool Estimator::save_map_to_ply(const std::string& output_path, float voxel_size
         // Transform feature cloud to world coordinates
         SE3f pose = kf->get_pose();
         util::PointCloudPtr transformed_cloud = std::make_shared<util::PointCloud>();
-        util::transform_point_cloud(feature_cloud, transformed_cloud, pose.matrix());
+        util::transform_point_cloud(feature_cloud, transformed_cloud, pose.Matrix());
         
         // Accumulate
         *accumulated_map += *transformed_cloud;

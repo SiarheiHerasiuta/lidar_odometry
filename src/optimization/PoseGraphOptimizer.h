@@ -12,7 +12,6 @@
 #pragma once
 
 #include "../util/Types.h"
-#include <sophus/se3.hpp>
 #include <memory>
 #include <vector>
 #include <map>
@@ -28,10 +27,11 @@ namespace gtsam {
 namespace lidar_odometry {
 namespace optimization {
 
+// Import types from util namespace
+using namespace lidar_odometry::util;
+
 class PoseGraphOptimizer {
 public:
-    using SE3f = Sophus::SE3f;
-    
     PoseGraphOptimizer();
     ~PoseGraphOptimizer();
     

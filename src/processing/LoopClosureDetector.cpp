@@ -54,7 +54,7 @@ bool LoopClosureDetector::add_keyframe(std::shared_ptr<database::LidarFrame> key
     PendingKeyframeData data;
     data.cloud = std::move(simple_cloud);
     data.keyframe_id = keyframe->get_keyframe_id();
-    data.position = keyframe->get_pose().translation();
+    data.position = keyframe->get_pose().Translation();
     
     {
         std::lock_guard<std::mutex> lock(m_pending_mutex);
@@ -119,7 +119,7 @@ std::vector<LoopCandidate> LoopClosureDetector::detect_loop_closures(
         
         // Search for loop closure candidates
         size_t current_id = current_keyframe->get_keyframe_id();  // Use keyframe ID, not frame ID
-        Eigen::Vector3f current_position = current_keyframe->get_pose().translation();
+        Eigen::Vector3f current_position = current_keyframe->get_pose().Translation();
         float min_similarity = 999.0f;
         std::vector<std::pair<float, size_t>> similarity_scores;
         

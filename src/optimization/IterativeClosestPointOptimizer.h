@@ -18,7 +18,6 @@
 #include "AdaptiveMEstimator.h"
 #include "../util/ICPConfig.h"
 
-#include <sophus/se3.hpp>
 #include <memory>
 #include <vector>
 
@@ -87,8 +86,8 @@ public:
      */
     bool optimize(map::VoxelMap* voxel_map,
                  std::shared_ptr<database::LidarFrame> curr_frame,
-                 const Sophus::SE3f& initial_transform,
-                 Sophus::SE3f& optimized_transform);
+                 const SE3f& initial_transform,
+                 SE3f& optimized_transform);
 
     /**
      * @brief Optimize relative pose between two keyframes for loop closure
@@ -100,7 +99,7 @@ public:
     
     bool optimize_loop(std::shared_ptr<database::LidarFrame> curr_keframe,
                  std::shared_ptr<database::LidarFrame> matched_keyframe,
-                 Sophus::SE3f& optimized_relative_transform,
+                 SE3f& optimized_relative_transform,
                  float& inlier_ratio);
     
     /**

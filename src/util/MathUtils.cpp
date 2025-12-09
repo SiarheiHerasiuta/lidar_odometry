@@ -120,32 +120,6 @@ double MathUtils::rad_to_deg(double radians) {
     return radians * 180.0 / M_PI;
 }
 
-Sophus::SE3d MathUtils::se3f_to_se3d(const Sophus::SE3f& se3_f) {
-    return Sophus::SE3d(se3_f.so3().cast<double>(), se3_f.translation().cast<double>());
-}
-
-Sophus::SE3f MathUtils::se3d_to_se3f(const Sophus::SE3d& se3_d) {
-    return Sophus::SE3f(se3_d.so3().cast<float>(), se3_d.translation().cast<float>());
-}
-
-// Template implementations
-template<typename Scalar>
-Sophus::SE3<Scalar> MathUtils::matrix_to_se3(const Eigen::Matrix<Scalar, 4, 4>& matrix) {
-    // Extract rotation matrix and normalize using SVD
-    Eigen::Matrix<Scalar, 3, 3> rotation = matrix.template block<3, 3>(0, 0);
-    Eigen::Matrix<Scalar, 3, 3> normalized_rotation = normalize_rotation_matrix(rotation);
-    
-    // Extract translation
-    Eigen::Matrix<Scalar, 3, 1> translation = matrix.template block<3, 1>(0, 3);
-    
-    return Sophus::SE3<Scalar>(normalized_rotation, translation);
-}
-
-template<typename Scalar>
-Eigen::Matrix<Scalar, 4, 4> MathUtils::se3_to_matrix(const Sophus::SE3<Scalar>& se3) {
-    return se3.matrix();
-}
-
 template<typename T>
 bool MathUtils::is_approx_equal(T a, T b, T epsilon) {
     return std::abs(a - b) < epsilon;
@@ -157,11 +131,6 @@ T MathUtils::clamp(T value, T min_val, T max_val) {
 }
 
 // Explicit template instantiations
-template Sophus::SE3<float> MathUtils::matrix_to_se3<float>(const Eigen::Matrix<float, 4, 4>&);
-template Sophus::SE3<double> MathUtils::matrix_to_se3<double>(const Eigen::Matrix<double, 4, 4>&);
-template Eigen::Matrix<float, 4, 4> MathUtils::se3_to_matrix<float>(const Sophus::SE3<float>&);
-template Eigen::Matrix<double, 4, 4> MathUtils::se3_to_matrix<double>(const Sophus::SE3<double>&);
-
 template bool MathUtils::is_approx_equal<float>(float, float, float);
 template bool MathUtils::is_approx_equal<double>(double, double, double);
 template float MathUtils::clamp<float>(float, float, float);

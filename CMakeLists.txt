@@ -65,11 +65,10 @@ include_directories(
     ${EIGEN3_INCLUDE_DIRS}
     ${THIRDPARTY_DIR}/pangolin/include
     ${CMAKE_BINARY_DIR}/thirdparty/pangolin/include
-    ${THIRDPARTY_DIR}/Sophus
     ${THIRDPARTY_DIR}/spdlog/include
     ${THIRDPARTY_DIR}/gtsam
     ${CMAKE_BINARY_DIR}/gtsam
-    ${THIRDPARTY_DIR}/nanoflann/include
+    ${THIRDPARTY_DIR}/nanoflann
     ${THIRDPARTY_DIR}/LidarIris
     ${OpenCV_INCLUDE_DIRS}
 )
@@ -85,6 +84,9 @@ set(COMMON_SOURCES
     
     # Map module
     src/map/VoxelMap.cpp
+    
+    # Util module
+    src/util/LieUtils.cpp
     
     # Third-party
     thirdparty/LidarIris/LidarIris.cpp

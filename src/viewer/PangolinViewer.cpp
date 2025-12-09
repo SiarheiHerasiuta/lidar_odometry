@@ -257,7 +257,7 @@ void PangolinViewer::render_loop() {
             auto feature_cloud = current_frame->get_feature_cloud();
             if (feature_cloud && !feature_cloud->empty()) {
                 // Transform features to world coordinates
-                Eigen::Matrix4f transform_matrix = current_frame->get_pose().matrix().cast<float>();
+                Eigen::Matrix4f transform_matrix = current_frame->get_pose().Matrix().cast<float>();
                 
                 glPointSize(7.0f); // Large mint points
                 glColor3f(0.4f, 0.9f, 0.8f); // Mint color
@@ -319,7 +319,7 @@ void PangolinViewer::render_loop() {
 
         // Handle follow camera modes - using local copy
         if (current_frame) {
-            Vector3f pos = current_frame->get_pose().translation();
+            Vector3f pos = current_frame->get_pose().Translation();
             
             if (m_top_view_follow.Get()) {
                 // Top-down view follow mode with zoomable camera
@@ -420,7 +420,7 @@ void PangolinViewer::update_current_frame(std::shared_ptr<database::LidarFrame> 
         
         
         // Add current pose to trajectory
-        // add_trajectory_pose(lidar_frame->get_pose().matrix());
+        // add_trajectory_pose(lidar_frame->get_pose().Matrix());
     }
 
 }
@@ -570,7 +570,7 @@ void PangolinViewer::draw_point_cloud() {
     }
     
     // Get the pose transformation matrix to transform points to world coordinates
-    Eigen::Matrix4f transform_matrix = m_current_frame->get_pose().matrix().cast<float>();
+    Eigen::Matrix4f transform_matrix = m_current_frame->get_pose().Matrix().cast<float>();
     
     // Draw point cloud with angle-based coloring, transformed to world coordinates
     glPointSize(m_point_size);
@@ -610,7 +610,7 @@ void PangolinViewer::draw_point_cloud_with_frame(std::shared_ptr<database::Lidar
     }
     
     // Get the pose transformation matrix to transform points to world coordinates
-    Eigen::Matrix4f transform_matrix = frame->get_pose().matrix().cast<float>();
+    Eigen::Matrix4f transform_matrix = frame->get_pose().Matrix().cast<float>();
     
     // Draw point cloud with angle-based coloring, transformed to world coordinates
     glPointSize(5.0f); // Larger than map cloud points
@@ -675,7 +675,7 @@ void PangolinViewer::draw_trajectory() {
     glBegin(GL_LINE_STRIP);
     for (const auto& frame : m_trajectory_frames) {
         if (frame) {
-            Vector3f position = frame->get_pose().translation();
+            Vector3f position = frame->get_pose().Translation();
             glVertex3f(position.x(), position.y(), position.z());
         }
     }
@@ -713,7 +713,7 @@ void PangolinViewer::draw_trajectory_with_frames(const std::vector<std::shared_p
     glBegin(GL_LINE_STRIP);
     for (const auto& frame : frames) {
         if (frame) {
-            Vector3f position = frame->get_pose().translation();
+            Vector3f position = frame->get_pose().Translation();
             glVertex3f(position.x(), position.y(), position.z());
         }
     }
@@ -723,8 +723,8 @@ void PangolinViewer::draw_trajectory_with_frames(const std::vector<std::shared_p
 }
 
 void PangolinViewer::draw_current_pose() {
-    Vector3f position = m_current_frame->get_pose().translation();
-    Eigen::Matrix3f rotation = m_current_frame->get_pose().rotationMatrix();
+    Vector3f position = m_current_frame->get_pose().Translation();
+    Eigen::Matrix3f rotation = m_current_frame->get_pose().RotationMatrix();
     
     // Draw current position as large red point
     glPointSize(10.0f);
@@ -766,8 +766,8 @@ void PangolinViewer::draw_current_pose_with_frame(std::shared_ptr<database::Lida
         return;
     }
     
-    Vector3f position = frame->get_pose().translation();
-    Eigen::Matrix3f rotation = frame->get_pose().rotationMatrix();
+    Vector3f position = frame->get_pose().Translation();
+    Eigen::Matrix3f rotation = frame->get_pose().RotationMatrix();
     
     // Draw current position as large red point
     glPointSize(10.0f);
@@ -857,7 +857,7 @@ void PangolinViewer::add_keyframe(std::shared_ptr<database::LidarFrame> keyframe
     m_keyframes.push_back(keyframe);
     
     if (keyframe) {
-        Vector3f position = keyframe->get_pose().translation();
+        Vector3f position = keyframe->get_pose().Translation();
         spdlog::debug("[PangolinViewer] Added keyframe {} at position ({:.2f}, {:.2f}, {:.2f})",
                       keyframe->get_keyframe_id(), position.x(), position.y(), position.z());
     }
@@ -880,7 +880,7 @@ void PangolinViewer::draw_keyframes() {
         if (!keyframe) continue;
         
         // Get pose dynamically (updates after PGO)
-        Matrix4f pose = keyframe->get_pose().matrix();
+        Matrix4f pose = keyframe->get_pose().Matrix();
         
         // Extract position and rotation from pose matrix
         Vector3f position = pose.block<3,1>(0,3);

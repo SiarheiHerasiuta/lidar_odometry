@@ -170,7 +170,7 @@ void LidarFrame::set_feature_cloud(const PointCloudPtr& feature_cloud) {
         spdlog::warn("[LidarFrame] Frame {} feature cloud set to null", m_frame_id);
     }
 
-    // util::transform_point_cloud(m_feature_cloud, m_feature_cloud_global, m_pose.matrix());
+    // util::transform_point_cloud(m_feature_cloud, m_feature_cloud_global, m_pose.Matrix());
 
 }
 
@@ -204,7 +204,7 @@ PointCloudPtr LidarFrame::get_world_cloud() const {
     PointCloudPtr world_cloud = std::make_shared<PointCloud>();
     
     // Convert SE3f to Matrix4f for transformation
-    Matrix4f transform_matrix = m_pose.matrix();
+    Matrix4f transform_matrix = m_pose.Matrix();
     
     try {
         util::transform_point_cloud(cloud_to_transform, world_cloud, transform_matrix);
@@ -286,7 +286,7 @@ size_t LidarFrame::get_correspondence_count() const {
 }
 
 float LidarFrame::compute_distance_to(const LidarFrame& other) const {
-    Vector3f translation_diff = m_pose.translation() - other.m_pose.translation();
+    Vector3f translation_diff = m_pose.Translation() - other.m_pose.Translation();
     return translation_diff.norm();
 }
 

@@ -13,7 +13,6 @@
 
 #include <Eigen/Dense>
 #include <Eigen/SVD>
-#include <sophus/se3.hpp>
 #include <cmath>
 
 namespace lidar_odometry {
@@ -93,36 +92,6 @@ public:
      * @return Angle in degrees
      */
     static double rad_to_deg(double radians);
-
-    /**
-     * @brief Convert 4x4 homogeneous matrix to SE3 with normalized rotation
-     * @param matrix Input 4x4 homogeneous transformation matrix
-     * @return SE3 transformation with normalized rotation matrix
-     */
-    template<typename Scalar>
-    static Sophus::SE3<Scalar> matrix_to_se3(const Eigen::Matrix<Scalar, 4, 4>& matrix);
-
-    /**
-     * @brief Convert SE3 to 4x4 homogeneous matrix
-     * @param se3 Input SE3 transformation
-     * @return 4x4 homogeneous transformation matrix
-     */
-    template<typename Scalar>
-    static Eigen::Matrix<Scalar, 4, 4> se3_to_matrix(const Sophus::SE3<Scalar>& se3);
-
-    /**
-     * @brief Convert float SE3 to double SE3 for optimization
-     * @param se3_f Input SE3 in float precision
-     * @return SE3 in double precision
-     */
-    static Sophus::SE3d se3f_to_se3d(const Sophus::SE3f& se3_f);
-
-    /**
-     * @brief Convert double SE3 to float SE3 for storage
-     * @param se3_d Input SE3 in double precision
-     * @return SE3 in float precision
-     */
-    static Sophus::SE3f se3d_to_se3f(const Sophus::SE3d& se3_d);
 
     /**
      * @brief Check if two floating point numbers are approximately equal

@@ -1,9 +1,9 @@
 /**
  * @file      Types.h
  * @brief     Common type definitions for LiDAR odometry system.
- * @author    Your Name
- * @date      2025-01-09
- * @copyright Copyright (c) 2025. All rights reserved.
+ * @author    Seungwon Choi
+ * @date      2025-10-03
+ * @copyright Copyright (c) 2025 Seungwon Choi. All rights reserved.
  *
  * @par License
  * This project is released under the MIT License.
@@ -12,7 +12,7 @@
 #pragma once
 
 #include <Eigen/Dense>
-#include <sophus/se3.hpp>
+#include "LieUtils.h"
 #include "PointCloudUtils.h"
 #include <memory>
 #include <vector>
@@ -38,13 +38,11 @@ using Matrix4d = Eigen::Matrix4d;
 using VectorXd = Eigen::VectorXd;
 using MatrixXd = Eigen::MatrixXd;
 
-// ===== Sophus Type Definitions =====
+// ===== Lie Group Type Definitions =====
 
-// SE3 transformations (float for storage, double for optimization)
-using SE3f = Sophus::SE3f;
-using SE3d = Sophus::SE3d;
-using SO3f = Sophus::SO3f;
-using SO3d = Sophus::SO3d;
+// SE3/SO3 transformations using our own implementation
+using SE3f = lio::SE3;
+using SO3f = lio::SO3;
 
 // ===== Point Cloud Type Definitions =====
 

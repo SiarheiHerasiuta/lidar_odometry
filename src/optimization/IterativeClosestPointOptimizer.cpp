@@ -37,15 +37,15 @@ IterativeClosestPointOptimizer::IterativeClosestPointOptimizer(const ICPConfig& 
 
 bool IterativeClosestPointOptimizer::optimize_loop(std::shared_ptr<database::LidarFrame> curr_keyframe,
                                           std::shared_ptr<database::LidarFrame> matched_keyframe,
-                                          Sophus::SE3f &optimized_relative_transform,
+                                          SE3f &optimized_relative_transform,
                                           float& inlier_ratio)
 {
     // Deep copy keyframes to avoid modifying original poses
     auto curr_keyframe_copy = std::make_shared<database::LidarFrame>(*curr_keyframe);
     auto matched_keyframe_copy = std::make_shared<database::LidarFrame>(*matched_keyframe);
 
-    Sophus::SE3f optimized_curr_pose = curr_keyframe_copy->get_pose();
-    Sophus::SE3f matched_pose = matched_keyframe_copy->get_pose();
+    SE3f optimized_curr_pose = curr_keyframe_copy->get_pose();
+    SE3f matched_pose = matched_keyframe_copy->get_pose();
 
     // Reset adaptive estimator
     if (m_adaptive_estimator) {
@@ -57,7 +57,7 @@ bool IterativeClosestPointOptimizer::optimize_loop(std::shared_ptr<database::Lid
     // Build kd tree of local map of matched keyframe
     auto local_feature_matched = get_frame_cloud(matched_keyframe_copy);
     PointCloudPtr transformed_matched_cloud = std::make_shared<PointCloud>();
-    util::transform_point_cloud(local_feature_matched, transformed_matched_cloud, matched_keyframe_copy->get_pose().matrix());
+    util::transform_point_cloud(local_feature_matched, transformed_matched_cloud, matched_keyframe_copy->get_pose().Matrix());
     matched_keyframe_copy->set_local_map(transformed_matched_cloud);
     matched_keyframe_copy->build_local_map_kdtree();
 
@@ -119,10 +119,10 @@ bool IterativeClosestPointOptimizer::optimize_loop(std::shared_ptr<database::Lid
         //           = n^T * (p_curr_world - p_matched_world)
         // ============================================
 
-        Eigen::Matrix3f R_curr = optimized_curr_pose.rotationMatrix();
-        Eigen::Vector3f t_curr = optimized_curr_pose.translation();
-        Eigen::Matrix3f R_matched = matched_pose.rotationMatrix();
-        Eigen::Vector3f t_matched = matched_pose.translation();
+        Eigen::Matrix3f R_curr = optimized_curr_pose.RotationMatrix();
+        Eigen::Vector3f t_curr = optimized_curr_pose.Translation();
+        Eigen::Matrix3f R_matched = matched_pose.RotationMatrix();
+        Eigen::Vector3f t_matched = matched_pose.Translation();
 
         // Build normal equation: H * delta = -g
         Eigen::Matrix<float, 6, 6> H = Eigen::Matrix<float, 6, 6>::Zero();
@@ -186,11 +186,11 @@ bool IterativeClosestPointOptimizer::optimize_loop(std::shared_ptr<database::Lid
         Eigen::Vector3f dw = delta.tail<3>();
 
         // Create SE3 from delta
-        Sophus::SE3f delta_transform;
+        SE3f delta_transform;
         if (dw.norm() < 1e-10f) {
-            delta_transform = Sophus::SE3f(Sophus::SO3f(), dt);
+            delta_transform = SE3f(SO3f::Identity(), dt);
         } else {
-            delta_transform = Sophus::SE3f(Sophus::SO3f::exp(dw), dt);
+            delta_transform = SE3f(SO3f::Exp(dw), dt);
         }
 
         // Update transform (right multiplication)
@@ -202,7 +202,7 @@ bool IterativeClosestPointOptimizer::optimize_loop(std::shared_ptr<database::Lid
 
         if (translation_delta < m_config.translation_tolerance && rotation_delta < m_config.rotation_tolerance) {
             spdlog::debug("[ICP] Loop closure converged at iteration {}", icp_iter + 1);
-            optimized_relative_transform = curr_keyframe->get_pose().inverse() * optimized_curr_pose;
+            optimized_relative_transform = curr_keyframe->get_pose().Inverse() * optimized_curr_pose;
             success = true;
             break;
         }
@@ -219,8 +219,8 @@ bool IterativeClosestPointOptimizer::optimize_loop(std::shared_ptr<database::Lid
             const auto& point_local = curr_feature_cloud->at(i);
 
             Eigen::Vector3f point_local_eigen(point_local.x, point_local.y, point_local.z);
-            Eigen::Vector3f point_world_eigen = curr_keyframe_copy->get_pose().matrix().block<3, 1>(0, 3) +
-                                                curr_keyframe_copy->get_pose().matrix().block<3, 3>(0, 0) * point_local_eigen;
+            Eigen::Vector3f point_world_eigen = curr_keyframe_copy->get_pose().Matrix().block<3, 1>(0, 3) +
+                                                curr_keyframe_copy->get_pose().Matrix().block<3, 3>(0, 0) * point_local_eigen;
 
             util::Point3D point_world;
             point_world.x = point_world_eigen.x();
@@ -252,15 +252,15 @@ bool IterativeClosestPointOptimizer::optimize_loop(std::shared_ptr<database::Lid
 
 bool IterativeClosestPointOptimizer::optimize(map::VoxelMap* voxel_map,
                                      std::shared_ptr<database::LidarFrame> curr_frame,
-                                     const Sophus::SE3f& initial_transform,
-                                     Sophus::SE3f& optimized_transform) {
+                                     const SE3f& initial_transform,
+                                     SE3f& optimized_transform) {
     auto start_time = std::chrono::high_resolution_clock::now();
     
     // Reset stats
     m_last_stats = OptimizationStats();
     
     // Initialize current transform estimate
-    Sophus::SE3f current_transform = initial_transform;
+    SE3f current_transform = initial_transform;
     optimized_transform = current_transform;
     
     // Reset adaptive estimator
@@ -332,8 +332,8 @@ bool IterativeClosestPointOptimizer::optimize(map::VoxelMap* voxel_map,
         // Normal equation: (J^T * W * J) * delta = -J^T * W * r
         // ============================================
         
-        Eigen::Matrix3f R = current_transform.rotationMatrix();
-        Eigen::Vector3f t = current_transform.translation();
+        Eigen::Matrix3f R = current_transform.RotationMatrix();
+        Eigen::Vector3f t = current_transform.Translation();
         
         // Build normal equation: H * delta = -g
         Eigen::Matrix<float, 6, 6> H = Eigen::Matrix<float, 6, 6>::Zero();
@@ -413,11 +413,11 @@ bool IterativeClosestPointOptimizer::optimize(map::VoxelMap* voxel_map,
         Eigen::Vector3f dw = delta.tail<3>();
         
         // Create SE3 from delta
-        Sophus::SE3f delta_transform;
+        SE3f delta_transform;
         if (dw.norm() < 1e-10f) {
-            delta_transform = Sophus::SE3f(Sophus::SO3f(), dt);
+            delta_transform = SE3f(SO3f::Identity(), dt);
         } else {
-            delta_transform = Sophus::SE3f(Sophus::SO3f::exp(dw), dt);
+            delta_transform = SE3f(SO3f::Exp(dw), dt);
         }
         
         // Update transform (right multiplication)
@@ -481,9 +481,9 @@ size_t IterativeClosestPointOptimizer::find_correspondences_loop(std::shared_ptr
 
     // Find correspondences: query CURR points, find neighbors in LAST cloud
 
-    Eigen::Matrix4f T_wl_last = last_keyframe->get_pose().matrix(); // Last keyframe pose in world coordinates
+    Eigen::Matrix4f T_wl_last = last_keyframe->get_pose().Matrix(); // Last keyframe pose in world coordinates
     Eigen::Matrix4f T_lw_last = T_wl_last.inverse(); // Inverse transform
-    Eigen::Matrix4f T_wl_curr = curr_keyframe->get_pose().matrix(); // Current keyframe pose in world coordinates
+    Eigen::Matrix4f T_wl_curr = curr_keyframe->get_pose().Matrix(); // Current keyframe pose in world coordinates
     Eigen::Matrix4f T_lw_curr = T_wl_curr.inverse(); // Inverse transform
 
     for (size_t idx = 0; idx < local_feature_curr->size(); ++idx)
@@ -596,7 +596,7 @@ size_t IterativeClosestPointOptimizer::find_correspondences(map::VoxelMap* voxel
     auto curr_pose = curr_frame->get_pose();   // Current estimate
     
     PointCloudPtr curr_world(new PointCloud());
-    util::transform_point_cloud(curr_cloud, curr_world, curr_pose.matrix());
+    util::transform_point_cloud(curr_cloud, curr_world, curr_pose.Matrix());
     
     // Find correspondences: query CURR points, get precomputed surfels from VoxelMap
     for (size_t idx = 0; idx < curr_world->size(); ++idx) {
