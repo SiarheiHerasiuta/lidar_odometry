@@ -22,6 +22,8 @@ cd lidar_odometry
 
 ## Run
 
+Before run algorithm on a test data do not foget update paths in config yaml files!!!
+
 ```bash
 # KITTI dataset
 ./build/kitti_lidar_odometry config/kitti.yaml

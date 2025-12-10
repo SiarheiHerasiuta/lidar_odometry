@@ -34,7 +34,9 @@ else
         libgoogle-glog-dev \
         libatlas-base-dev \
         libsuitesparse-dev \
-        libyaml-cpp-dev
+        libyaml-cpp-dev \
+		libopencv-dev \
+        libboost-all-dev
 
     echo "System dependencies installed successfully!"
 fi
