@@ -1,4 +1,5 @@
 #include <fstream>
+#include <cstdint>
 #include <pangolin/image/typed_image.h>
 
 namespace pangolin {

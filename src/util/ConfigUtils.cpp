@@ -215,6 +215,10 @@ bool ConfigManager::load_from_file(const std::string& config_file) {
         if (config_map.find("estimator.max_map_frames") != config_map.end()) {
             m_config.max_map_frames = std::stoull(config_map["estimator.max_map_frames"]);
         }
+        if (config_map.find("estimator.use_surfel_correspondence") != config_map.end()) {
+            m_config.use_surfel_correspondence = (config_map["estimator.use_surfel_correspondence"] == "true" ||
+                                                   config_map["estimator.use_surfel_correspondence"] == "1");
+        }
         
         // Viewer
         if (config_map.find("viewer.viewer_width") != config_map.end()) {

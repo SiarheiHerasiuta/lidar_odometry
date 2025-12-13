@@ -283,9 +283,17 @@ bool IterativeClosestPointOptimizer::optimize(map::VoxelMap* voxel_map,
         // Update curr frame pose for correspondence finding
         curr_frame->set_pose(current_transform);
         
-        // Find correspondences using VoxelMap surfels
+        // Find correspondences based on config
         DualFrameCorrespondences correspondences;
-        size_t num_correspondences = find_correspondences(voxel_map, curr_frame, correspondences);
+        size_t num_correspondences = 0;
+        
+        if (m_config.use_surfel_correspondence) {
+            // Use VoxelMap surfels (O(1) lookup)
+            num_correspondences = find_correspondences(voxel_map, curr_frame, correspondences);
+        } else {
+            // Use KDTree + plane fitting
+            num_correspondences = find_correspondences_kdtree(voxel_map, curr_frame, correspondences);
+        }
         
         if (num_correspondences < static_cast<size_t>(m_config.min_correspondence_points)) {
             LOG_WARN("[ICP] Insufficient correspondences: {} < {} at iteration {}", 
@@ -631,6 +639,128 @@ size_t IterativeClosestPointOptimizer::find_correspondences(map::VoxelMap* voxel
         correspondences.points_curr.push_back(curr_point_local);
         correspondences.normals_last.push_back(normal);  // Normal from map (world coordinates)
         correspondences.residuals.push_back(residual);
+    }
+    
+    return correspondences.size();
+}
+
+size_t IterativeClosestPointOptimizer::find_correspondences_kdtree(map::VoxelMap* voxel_map,
+                                                  std::shared_ptr<database::LidarFrame> curr_frame,
+                                                  DualFrameCorrespondences& correspondences) {
+    
+    correspondences.clear();
+    
+    if (!voxel_map || voxel_map->empty()) {
+        LOG_WARN("[IterativeClosestPointOptimizer] VoxelMap is empty!");
+        return 0;
+    }
+    
+    // Check if KDTree is built
+    auto kdtree = voxel_map->GetKdTree();
+    if (!kdtree) {
+        LOG_WARN("[IterativeClosestPointOptimizer] VoxelMap KDTree not built! Call RebuildKdTree() first.");
+        return 0;
+    }
+    
+    auto curr_cloud = get_frame_cloud(curr_frame);     // Current frame feature cloud (local coordinates)
+    
+    if (!curr_cloud || curr_cloud->empty()) {
+        LOG_WARN("[IterativeClosestPointOptimizer] Empty curr_cloud");
+        return 0;
+    }
+    
+    // Transform current frame cloud to world coordinates using current pose estimate
+    auto curr_pose = curr_frame->get_pose();   // Current estimate
+    
+    PointCloudPtr curr_world(new PointCloud());
+    util::transform_point_cloud(curr_cloud, curr_world, curr_pose.Matrix());
+    
+    // Get map point cloud for neighbor access
+    auto map_cloud = voxel_map->GetPointCloud();
+    if (!map_cloud || map_cloud->empty()) {
+        LOG_WARN("[IterativeClosestPointOptimizer] Empty map cloud");
+        return 0;
+    }
+    
+    const int K = 5;  // Number of neighbors for plane fitting
+    
+    // Find correspondences: query CURR points, find neighbors in map using KDTree
+    for (size_t idx = 0; idx < curr_world->size(); ++idx) {
+        
+        const auto& curr_point_world = curr_world->at(idx);
+        util::Point3D query_point;
+        query_point.x = curr_point_world.x;
+        query_point.y = curr_point_world.y;
+        query_point.z = curr_point_world.z;
+        
+        // Find K nearest neighbors
+        std::vector<int> neighbor_indices(K);
+        std::vector<float> neighbor_distances(K);
+        int found_neighbors = kdtree->nearestKSearch(query_point, K, neighbor_indices, neighbor_distances);
+        
+        if (found_neighbors < 5) {
+            continue;
+        }
+        
+        // Select points for plane fitting from map cloud
+        std::vector<Eigen::Vector3d> selected_points;
+        selected_points.reserve(K);
+        
+        for (int k = 0; k < found_neighbors && selected_points.size() < 5; ++k) {
+            int neighbor_idx = neighbor_indices[k];
+            if (neighbor_idx < 0 || static_cast<size_t>(neighbor_idx) >= map_cloud->size()) {
+                continue;
+            }
+            
+            Eigen::Vector3d pt(map_cloud->at(neighbor_idx).x,
+                               map_cloud->at(neighbor_idx).y,
+                               map_cloud->at(neighbor_idx).z);
+            selected_points.push_back(pt);
+        }
+        
+        if (selected_points.size() < 3) {
+            continue;
+        }
+        
+        // Check for non-collinear points
+        if (is_collinear(selected_points[0], selected_points[1], selected_points[2], 0.5)) {
+            continue;
+        }
+        
+        // Fit plane to selected points using SVD
+        // Compute centroid
+        Eigen::Vector3d centroid = Eigen::Vector3d::Zero();
+        for (const auto& pt : selected_points) {
+            centroid += pt;
+        }
+        centroid /= selected_points.size();
+        
+        // Build matrix for SVD
+        Eigen::MatrixXd A(selected_points.size(), 3);
+        for (size_t i = 0; i < selected_points.size(); ++i) {
+            A.row(i) = (selected_points[i] - centroid).transpose();
+        }
+        
+        // Compute SVD
+        Eigen::JacobiSVD<Eigen::MatrixXd> svd(A, Eigen::ComputeFullV);
+        Eigen::Vector3d plane_normal = svd.matrixV().col(2);  // Last column is normal
+        double plane_d = -plane_normal.dot(centroid);
+        
+        // Compute point-to-plane distance (residual)
+        Eigen::Vector3d curr_point_world_d(curr_point_world.x, curr_point_world.y, curr_point_world.z);
+        double distance = std::abs(plane_normal.dot(curr_point_world_d) + plane_d);
+        
+        if (distance > m_config.max_correspondence_distance) {
+            continue;
+        }
+        
+        // Store correspondence
+        Eigen::Vector3d curr_point_local(curr_cloud->at(idx).x, curr_cloud->at(idx).y, curr_cloud->at(idx).z);
+        
+        correspondences.points_last.push_back(centroid);  // Use centroid as target point
+        correspondences.points_curr.push_back(curr_point_local);
+        correspondences.normals_last.push_back(plane_normal);
+        correspondences.residuals.push_back(distance);
     }
     
     return correspondences.size();

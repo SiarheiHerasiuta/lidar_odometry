@@ -27,7 +27,6 @@ find_package(OpenGL REQUIRED)
 find_package(GLEW REQUIRED)
 find_package(Threads REQUIRED)
 find_package(OpenCV REQUIRED)
-find_package(Boost REQUIRED)
 
 # Build third-party dependencies from source
 set(THIRDPARTY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty)

@@ -67,6 +67,7 @@ Estimator::Estimator(const util::SystemConfig& config)
     dual_frame_config.outlier_rejection_ratio = 0.9;
     dual_frame_config.use_robust_loss = true;
     dual_frame_config.robust_loss_delta = 0.1;
+    dual_frame_config.use_surfel_correspondence = config.use_surfel_correspondence;
     
     m_icp_optimizer = std::make_shared<optimization::IterativeClosestPointOptimizer>(dual_frame_config, m_adaptive_estimator);
     
@@ -77,6 +78,7 @@ Estimator::Estimator(const util::SystemConfig& config)
     m_voxel_map = std::make_unique<map::VoxelMap>(config.map_voxel_size);
     m_voxel_map->SetHierarchyFactor(3);  // L1 = 3×3×3 L0 voxels
     m_voxel_map->SetPlanarityThreshold(config.surfel_planarity_threshold);
+    m_voxel_map->SetComputeSurfels(config.use_surfel_correspondence);  // Skip surfel computation if using KDTree
     
     // Initialize legacy voxel filter for map downsampling
     m_voxel_filter = std::make_unique<util::VoxelGrid>();
@@ -453,6 +455,11 @@ void Estimator::create_keyframe(std::shared_ptr<database::LidarFrame> frame)
     double max_distance = m_config.max_range * 1.2;
     
     m_voxel_map->UpdateVoxelMap(global_feature_cloud, sensor_position, max_distance, true);
+    
+    // Rebuild KDTree if using KDTree-based correspondence
+    if (!m_config.use_surfel_correspondence) {
+        m_voxel_map->RebuildKdTree();
+    }
     
     auto voxelmap_end = std::chrono::high_resolution_clock::now();
     double voxelmap_ms = std::chrono::duration<double, std::milli>(voxelmap_end - voxelmap_start).count();

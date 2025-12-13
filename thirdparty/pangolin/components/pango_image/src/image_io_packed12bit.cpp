@@ -1,5 +1,6 @@
 #include <fstream>
 #include <memory>
+#include <cstdint>
 
 #include <pangolin/image/typed_image.h>
 

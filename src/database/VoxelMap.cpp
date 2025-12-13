@@ -179,6 +179,11 @@ void VoxelMap::UpdateVoxelMap(const PointCloudConstPtr& new_cloud,
         affected_L1.insert(key_L1);
     }
     
+    // Skip surfel computation if not needed (KDTree-based correspondence)
+    if (!m_compute_surfels) {
+        return;
+    }
+    
     // Update surfels for affected L1 voxels
     const int MIN_OCCUPIED_CHILDREN = 5;
     
@@ -410,6 +415,26 @@ std::vector<std::tuple<Eigen::Vector3f, Eigen::Vector3f, float>> VoxelMap::GetL1
     }
     
     return surfels;
+}
+
+void VoxelMap::RebuildKdTree() {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    
+    // Get all L0 centroids as point cloud
+    m_kdtree_cloud = GetPointCloud();
+    
+    if (!m_kdtree_cloud || m_kdtree_cloud->empty()) {
+        m_kdtree.reset();
+        m_kdtree_dirty = false;
+        return;
+    }
+    
+    // Build KDTree
+    m_kdtree = std::make_shared<lidar_slam::util::KdTree>();
+    m_kdtree->setInputCloud(m_kdtree_cloud);
+    m_kdtree_dirty = false;
+    
+    LOG_DEBUG("[VoxelMap] KDTree rebuilt with {} points", m_kdtree_cloud->size());
 }
 
 } // namespace map

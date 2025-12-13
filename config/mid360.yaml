@@ -1,6 +1,6 @@
 # Data paths
-data_directory: "/home/eugene/data/MID360"
-output_directory: "/home/eugene/data/MID360/Result"
+data_directory: "/home/eugene/data/mid360"
+output_directory: "/home/eugene/data/mid360/Result"
 seq: "slam"
 
 # Player settings
@@ -15,7 +15,7 @@ player:
 # Point cloud processing
 point_cloud:
   voxel_size: 0.4                    # Voxel size for downsampling
-  point_stride: 1                    # Process every N-th point (1=all, 3=skip 2)
+  point_stride: 4                    # Process every N-th point (1=all, 3=skip 2)
   map_voxel_size: 0.4                # Map points downsampling voxel size
   max_range: 100.0
   min_range: 0.1
@@ -57,6 +57,7 @@ estimator:
   min_correspondence_points: 50      # More points needed for stability
   parameter_tolerance: 1e-6          # More relaxed tolerance
   function_tolerance: 1e-6           # More relaxed tolerance
+  use_surfel_correspondence: false    # true: O(1) surfel lookup, false: KDTree + plane fitting
 
 # Keyframe management settings
 keyframe:
@@ -65,7 +66,7 @@ keyframe:
 # Loop closure detection settings
 loop_detector:
   enable_loop_detection: true
-  similarity_threshold: 0.5          # Lower is more similar (0.0 = identical)
+  similarity_threshold: 0.3          # Lower is more similar (0.0 = identical)
   min_keyframe_gap: 100              # Dual purpose: 1) Min keyframe ID gap for candidate search, 2) Cooldown gap after successful loop closure
   max_search_distance: 5.0          # Maximum distance (meters) to search for loop candidates
   enable_debug_output: true          # Enable detailed debug logging
@@ -81,8 +82,8 @@ pose_graph_optimization:
 
 # Viewer settings
 viewer:
-  viewer_width: 3000
-  viewer_height: 2000
+  viewer_width: 1920
+  viewer_height: 1280
   point_size: 2.0
   feature_point_size: 5.0
   trajectory_width: 2.0

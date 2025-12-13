@@ -199,12 +199,14 @@ public:
     void SetInitHitCount(int count) { m_init_hit_count = count; }
     void SetHierarchyFactor(int factor);
     void SetPlanarityThreshold(float threshold) { m_planarity_threshold = threshold; }
+    void SetComputeSurfels(bool compute) { m_compute_surfels = compute; }
     
     float GetVoxelSize() const { return m_voxel_size; }
     int GetHierarchyFactor() const { return m_hierarchy_factor; }
     size_t GetVoxelCount() const { return m_voxels_L0.size(); }
     size_t GetL1VoxelCount() const { return m_voxels_L1.size(); }
     bool empty() const { return m_voxels_L0.empty(); }
+    bool GetComputeSurfels() const { return m_compute_surfels; }
     
     /**
      * @brief Get number of L1 voxels with valid surfels
@@ -257,6 +259,23 @@ public:
     PointCloudPtr GetPointCloud() const;
     
     /**
+     * @brief Get KDTree of L0 centroids for correspondence search
+     * @return Shared pointer to KDTree (may be nullptr if not built)
+     */
+    std::shared_ptr<lidar_slam::util::KdTree> GetKdTree() const { return m_kdtree; }
+    
+    /**
+     * @brief Rebuild KDTree from current L0 centroids
+     * Call this after adding new points/keyframes when using KDTree-based correspondence
+     */
+    void RebuildKdTree();
+    
+    /**
+     * @brief Check if KDTree is built and ready
+     */
+    bool HasKdTree() const { return m_kdtree != nullptr; }
+    
+    /**
      * @brief Get all L1 surfels for visualization
      * @return Vector of (centroid, normal, planarity_score) tuples
      */
@@ -277,6 +296,7 @@ private:
     int m_init_hit_count = 1;
     int m_hierarchy_factor = 3;  // L1 = 3×3×3 L0 voxels
     float m_planarity_threshold = 0.1f;  // Default: 0.1 (less strict)
+    bool m_compute_surfels = true;  // If false, skip surfel computation (for KDTree-based correspondence)
     
     // Level 0: Leaf voxels (centroid only, no raw points)
     struct VoxelNode_L0 {
@@ -302,6 +322,11 @@ private:
         VoxelNode_L1() = default;
     };
     ankerl::unordered_dense::map<VoxelKey, VoxelNode_L1, VoxelKeyHash> m_voxels_L1;
+    
+    // KDTree for L0 centroids (for KDTree-based correspondence search)
+    std::shared_ptr<lidar_slam::util::KdTree> m_kdtree;
+    PointCloudPtr m_kdtree_cloud;  // Point cloud used for KDTree
+    bool m_kdtree_dirty = true;    // Flag to indicate KDTree needs rebuild
     
     mutable std::recursive_mutex m_mutex;
 };

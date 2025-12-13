@@ -11,6 +11,16 @@ A high-performance real-time LiDAR SLAM system (~400 FPS on KITTI).
 - Point-to-plane ICP with Gauss-Newton optimization on Lie manifold
 - Adaptive M-estimator for robust estimation (PKO)
 - Loop closure detection with LiDAR Iris
+- **Configurable correspondence method**: Surfel-based (O(1) lookup) or KDTree-based (dynamic plane fitting)
+
+### Correspondence Method Selection
+
+```yaml
+use_surfel_correspondence: false  # true: O(1) surfel lookup, false: KDTree + plane fitting
+```
+
+- **Surfel-based (default)**: Pre-computed surfels enable O(1) correspondence lookup. Best for outdoor environments with large planar structures.
+- **KDTree-based**: Dynamic plane fitting at query time. Recommended for unstructured environments or narrow indoor spaces where pre-computed surfels may not represent local geometry accurately.
 
 ## Build
 

@@ -70,6 +70,9 @@ struct ICPConfig {
     // Performance
     bool use_kdtree = true;
     int max_kdtree_neighbors = 1;
+    
+    // Correspondence method
+    bool use_surfel_correspondence = true;  // true: O(1) surfel lookup, false: KDTree + plane fitting
 };
 
 /**
@@ -223,12 +226,18 @@ public:
 
 private:
     /**
-     * @brief Find correspondences using VoxelMap surfels
+     * @brief Find correspondences using VoxelMap surfels (O(1) lookup)
      */
     size_t find_correspondences(map::VoxelMap* voxel_map,
                                std::shared_ptr<database::LidarFrame> curr_frame,
                                DualFrameCorrespondences& correspondences);
     
+    /**
+     * @brief Find correspondences using VoxelMap KDTree + plane fitting
+     */
+    size_t find_correspondences_kdtree(map::VoxelMap* voxel_map,
+                                       std::shared_ptr<database::LidarFrame> curr_frame,
+                                       DualFrameCorrespondences& correspondences);
     
     /**
      * @brief Find correspondences between two keyframes for loop closure

@@ -58,6 +58,7 @@ struct SystemConfig {
     double parameter_tolerance = 1e-8;              ///< Parameter tolerance for Ceres
     double function_tolerance = 1e-8;               ///< Function tolerance for Ceres
     size_t max_map_frames = 20;                     ///< Maximum frames in local map
+    bool use_surfel_correspondence = true;          ///< Use surfel-based correspondence (true) or KDTree-based (false)
     
     // ===== Robust estimation =====
     bool use_adaptive_m_estimator = true;           ///< Enable adaptive M-estimator
